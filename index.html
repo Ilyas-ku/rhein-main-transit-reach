@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rhein-Main transit reach</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%23fff' stroke='%23000' stroke-width='4'/%3E%3C/svg%3E">
+<meta name="description" content="Pick any point in Rhein-Main and see how far public transport takes you within an hour, adjusted for real delays and cancellations.">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0B0E1A; --panel: rgba(11, 14, 26, .92); --text: #E6E8F0; --text2: #8A90A8; --rule: #1E2440;
+    --blue: #596FFF; --aqua: #26FFDB; --pink: #FF3396;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 400 15px/1.45 'IBM Plex Sans', system-ui, sans-serif; }
+  #map { position: fixed; inset: 0; background: var(--bg); }
+  .leaflet-container { background: var(--bg); font: inherit; }
+  .leaflet-control-attribution { background: rgba(11,14,26,.75) !important; color: var(--text2) !important; font-size: 11px; }
+  .leaflet-control-attribution a { color: var(--text2) !important; }
+  .leaflet-bar a { background: var(--panel); color: var(--text); border-color: var(--rule); }
+  .leaflet-bar a:hover { background: #151B36; color: var(--text); }
+
+  #panel {
+    position: fixed; top: 16px; left: 16px; width: 380px; max-height: calc(100% - 32px); overflow: auto;
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 18px; padding: 22px 22px 18px;
+    backdrop-filter: blur(8px); z-index: 1000; box-shadow: 0 20px 60px rgba(0,0,0,.45);
+  }
+  .brand { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .kicker { font: 600 11px 'Chakra Petch', sans-serif; letter-spacing: 3px; color: var(--text2); text-transform: uppercase; }
+  .lang { display: inline-flex; border: 1px solid var(--rule); border-radius: 999px; padding: 2px; }
+  .lang button { font: 700 11px 'JetBrains Mono', monospace; letter-spacing: 1px; color: var(--text2); background: none; border: 0; border-radius: 999px; padding: 4px 10px; cursor: pointer; }
+  .lang button[aria-pressed="true"] { background: var(--blue); color: #fff; }
+  h1 { font: 700 27px/1.15 'Chakra Petch', sans-serif; margin: 6px 0 6px; letter-spacing: .3px; }
+  .lead { color: var(--text2); margin: 0 0 14px; font-size: 14px; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+  .search { display: flex; gap: 6px; margin: 0 0 6px; }
+  .search input { flex: 1; min-width: 0; font: 400 14px 'IBM Plex Sans', sans-serif; color: var(--text); background: #11162B; border: 1px solid var(--rule); border-radius: 10px; padding: 9px 11px; }
+  .search input::placeholder { color: var(--text2); }
+  .search button { font: 600 13px 'IBM Plex Sans', sans-serif; color: #fff; background: var(--blue); border: 0; border-radius: 10px; padding: 0 14px; cursor: pointer; }
+  .where { font-size: 12.5px; color: var(--text2); min-height: 18px; }
+  .where b { color: var(--text); font-weight: 500; }
+
+  .view { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--rule); border-radius: 12px; padding: 3px; margin: 12px 0 4px; }
+  .view button { font: 600 13px 'IBM Plex Sans', sans-serif; color: var(--text2); background: none; border: 0; border-radius: 9px; padding: 8px 6px; cursor: pointer; }
+  .view button[aria-pressed="true"] { background: #1A2147; color: var(--text); }
+  .view button[data-view="risk"][aria-pressed="true"] { background: rgba(255, 51, 150, .16); color: #FF86BD; }
+
+  .ctl { margin: 16px 0 6px; }
+  .ctl-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .ctl-head label { font-weight: 600; font-size: 14px; }
+  .val { font: 700 15px 'JetBrains Mono', monospace; color: var(--aqua); white-space: nowrap; }
+  .hint { color: var(--text2); font-size: 12.5px; margin-top: 4px; min-height: 18px; }
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 30px; background: transparent; margin: 6px 0 0; cursor: pointer; }
+  input[type=range]::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--rule), #2F3A8B); }
+  input[type=range]::-moz-range-track { height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--rule), #2F3A8B); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%; background: var(--text); border: 4px solid var(--blue); margin-top: -8px; box-shadow: 0 0 12px rgba(89,111,255,.6); }
+  input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--text); border: 4px solid var(--blue); box-shadow: 0 0 12px rgba(89,111,255,.6); }
+  .ticks { display: flex; justify-content: space-between; font: 500 10.5px 'JetBrains Mono', monospace; color: var(--text2); margin-top: -2px; }
+  .modes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .modes span { font-size: 12px; color: var(--text2); background: #11162B; border: 1px solid var(--rule); border-radius: 999px; padding: 2px 9px; }
+  .modes b { font: 700 12px 'JetBrains Mono', monospace; color: var(--text); margin-left: 4px; }
+  .modes .lbl { background: none; border: 0; padding: 2px 0; }
+
+  .legend { display: grid; gap: 3px; margin: 20px 0 4px; }
+  .legend div { height: 10px; border-radius: 2px; }
+  .legend-l { display: grid; font: 500 11px 'JetBrains Mono', monospace; color: var(--text2); }
+
+  .stats { margin-top: 18px; border-top: 1px solid var(--rule); padding-top: 14px; }
+  .stats h2 { font: 600 12px 'Chakra Petch', sans-serif; letter-spacing: 2px; color: var(--text2); margin: 0 0 10px; text-transform: uppercase; }
+  .row { display: grid; grid-template-columns: 54px 1fr 74px; align-items: center; gap: 8px; margin: 6px 0; font-size: 13px; }
+  .row .k { font: 500 12px 'JetBrains Mono', monospace; color: var(--text2); }
+  .bar { position: relative; height: 12px; background: #11162B; border-radius: 3px; overflow: hidden; }
+  .bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; transition: width .3s ease; }
+  .bar i.ghost { background: transparent; border: 1px dashed #4B5DD7; }
+  .row .v { font: 700 13px 'JetBrains Mono', monospace; text-align: right; }
+  .row .d { display: block; font-size: 11px; color: var(--pink); font-weight: 500; }
+  .note { color: var(--text2); font-size: 12px; margin-top: 8px; }
+
+  details { margin-top: 14px; border-top: 1px solid var(--rule); padding-top: 12px; color: var(--text2); font-size: 12.5px; }
+  summary { cursor: pointer; color: var(--text); font-weight: 500; font-size: 13px; }
+  details p { margin: 8px 0; }
+  .foot { margin-top: 12px; color: var(--text2); font-size: 11.5px; }
+  .busy { position: fixed; right: 18px; bottom: 34px; z-index: 900; font: 500 12px 'JetBrains Mono', monospace; color: var(--text2); background: var(--panel); border: 1px solid var(--rule); border-radius: 999px; padding: 6px 12px; display: none; }
+
+  .origin { width: 22px; height: 22px; border-radius: 50%; background: #fff; border: 4px solid #000;
+            box-shadow: 0 0 0 3px rgba(255,255,255,.3), 0 0 18px rgba(255,255,255,.5); cursor: grab; }
+
+  @media (max-width: 720px) {
+    #panel { top: auto; bottom: 0; left: 0; right: 0; width: auto; max-height: 50%; border-radius: 18px 18px 0 0; padding: 16px; }
+    h1 { font-size: 22px; }
+    .lead { display: none; }
+    .leaflet-control-zoom { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="map" role="application" aria-label="Map"></div>
+<div class="busy" id="busy"></div>
+
+<aside id="panel">
+  <div class="brand"><span class="kicker" data-i="kicker"></span>
+    <div class="lang" role="group" aria-label="Language"><button type="button" data-lang="en">EN</button><button type="button" data-lang="de">DE</button></div></div>
+  <h1 data-i="title"></h1>
+  <p class="lead" data-i="lead"></p>
+
+  <form class="search" id="search">
+    <input id="q" type="search" autocomplete="off" data-ph="ph" aria-label="Address">
+    <button type="submit" data-i="go"></button>
+  </form>
+  <div class="where" id="where"></div>
+
+  <div class="view" role="group" aria-label="View">
+    <button type="button" data-view="time" data-i="vTime" aria-pressed="true"></button><button type="button" data-view="risk" data-i="vRisk" aria-pressed="false"></button>
+  </div>
+
+  <div class="ctl">
+    <div class="ctl-head"><label for="rel" data-i="rel"></label><span class="val" id="relv"></span></div>
+    <input id="rel" type="range" min="0" max="4" step="1" value="3" aria-describedby="relh">
+    <div class="ticks"><span data-i="tt"></span><span>1/2</span><span>4/5</span><span>9/10</span><span>19/20</span></div>
+    <div class="hint" id="relh"></div>
+    <div class="modes" id="modes" aria-live="polite"></div>
+  </div>
+
+  <div class="ctl">
+    <div class="ctl-head"><label for="dep" data-i="dep"></label><span class="val" id="depv"></span></div>
+    <input id="dep" type="range" min="0" max="72" step="1" value="12">
+    <div class="ticks"><span>05:00</span><span>09:30</span><span>14:00</span><span>18:30</span><span>23:00</span></div>
+  </div>
+
+  <div class="legend" id="legend"></div>
+  <div class="legend-l" id="legend-l"></div>
+
+  <div class="stats">
+    <h2 id="statsh"></h2>
+    <div id="rows"></div>
+    <div class="note" id="note"></div>
+  </div>
+
+  <details>
+    <summary data-i="how"></summary>
+    <p data-i="how1"></p>
+    <p data-i="how2"></p>
+    <p data-i="how3"></p>
+  </details>
+  <div class="foot" data-i="foot"></div>
+</aside>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3-array@3.2.4/dist/d3-array.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3-contour@4.0.2/dist/d3-contour.min.js"></script>
+<script>
+// ------------------------------------------------------------------ settings
+const BANDS = [20, 30, 40, 50, 60];
+const COLORS = ["#26FFDB", "#12DDBE", "#07B89C", "#05927B", "#066E5E"];
+const FILL = [.38, .31, .25, .20, .16];
+const RISK = [5, 10, 20], RISK_COLORS = ["#AC1E63", "#D5287C", "#FF3396"], RISK_FILL = [.22, .30, .40];
+const WALK = 80 / 60 / 1.3;                       // m/s along the street: 4.8 km/h on a 1.3x detour
+const ACCESS_M = 1000, TRANSFER_M = 400, BUFFER_S = 120, HORIZON_S = 3600;
+const START = [50.1141, 8.6788];                  // Hauptwache
+
+const T = {
+  en: {
+    kicker: "Transit reach · Rhein-Main", title: "How far do you get in an hour?",
+    lead: "Pick any point and see where public transport takes you, door to door, on a weekday — and how the map shrinks once you count real delays and cancellations.",
+    ph: "Address or place, e.g. Bockenheimer Warte", go: "Go",
+    here: "Start:", clickHint: "Click the map or drag the white dot to move the start.",
+    outside: "Outside the area with timetable data — pick a point in Rhein-Main.",
+    notFound: "Nothing found in Rhein-Main for that.",
+    vTime: "Travel time", vRisk: "Delay risk",
+    rel: "I need to be on time", tt: "timetable", dep: "Leave at",
+    levels: ["Timetable", "1 in 2 days", "4 in 5 days", "9 in 10 days", "19 in 20 days"],
+    hints: ["Timetable times: what the journey planner promises.",
+            "Arriving on time on a typical day: every other day goes worse.",
+            "Arriving on time 4 days out of 5: about once a week you are late.",
+            "Arriving on time 9 days out of 10: about twice a month you are late.",
+            "Arriving on time 19 days out of 20: about once a month you are late."],
+    buffer: "Average delay per leg:",
+    modes: { "S-Bahn": "S-Bahn", "Regional rail": "Regional", "U-Bahn": "U-Bahn", "Tram": "Tram", "Bus": "Bus" },
+    people: "People who live within", peopleRisk: "People you reach later than the timetable says",
+    note: "Dashed outline: the same with timetable times.",
+    riskRows: ["+5 min", "+10 min", "+20 min"], riskLegend: ["+5", "+10", "+20 min or out of reach"],
+    riskNote: "Pink: how much longer the trip takes than the timetable says, at the reliability chosen above. Outlines: travel time bands.",
+    riskOff: "Pick a reliability above “timetable” to see where delays cost the most.",
+    loading: "loading timetable…",
+    how: "How this is calculated",
+    how1: "Your browser runs a search over the weekday timetable (Tuesday 20 Oct 2026, Rhein-Main) for the chosen departure time and finds the earliest arrival at every stop within an hour. Walking is 4.8 km/h along a path 1.3× the straight line, up to 1 km to and from stops; changing vehicles takes at least 2 minutes.",
+    how2: "<b>Reliability</b> pushes every leg's arrival back by the delay that is not exceeded on that share of weekday trips, at that stop, on that line, in that hour, plus the expected wait from cancellations. Delays were measured from operators' live data since 24 Sep 2026. The next vehicle is assumed to leave on time, so a late train can cost you the connection; the route then switches to whatever you can still catch. Each leg is buffered on its own, so trips with changes are estimated cautiously.",
+    how3: "The map covers Frankfurt, Offenbach, Hanau, Darmstadt, Mainz, Wiesbaden and Friedberg (dashed frame); reach is cut at its edge. Population: Zensus 2022, 100 m grid.",
+    foot: "Data: DELFI / gtfs.de (CC BY-SA 4.0), Zensus 2022, © OpenStreetMap contributors, geocoding Nominatim, basemap © Esri.",
+    num: n => n >= 1e6 ? (n / 1e6).toFixed(2) + " M" : Math.round(n / 1000) + "k",
+  },
+  de: {
+    kicker: "ÖPNV-Reichweite · Rhein-Main", title: "Wie weit kommt man in einer Stunde?",
+    lead: "Wählen Sie einen beliebigen Punkt und sehen Sie, wohin Bus und Bahn Sie an einem Werktag bringen – von Tür zu Tür – und wie die Karte schrumpft, wenn man echte Verspätungen und Ausfälle einrechnet.",
+    ph: "Adresse oder Ort, z. B. Bockenheimer Warte", go: "Los",
+    here: "Start:", clickHint: "Auf die Karte klicken oder den weißen Punkt ziehen, um den Start zu verschieben.",
+    outside: "Außerhalb des Gebiets mit Fahrplandaten – bitte einen Punkt im Rhein-Main-Gebiet wählen.",
+    notFound: "Dazu wurde im Rhein-Main-Gebiet nichts gefunden.",
+    vTime: "Fahrzeit", vRisk: "Verspätungsrisiko",
+    rel: "Ich muss pünktlich sein", tt: "Fahrplan", dep: "Abfahrt um",
+    levels: ["Fahrplan", "1 von 2 Tagen", "4 von 5 Tagen", "9 von 10 Tagen", "19 von 20 Tagen"],
+    hints: ["Fahrplanzeiten: was die Fahrplanauskunft verspricht.",
+            "Pünktlich an einem typischen Tag: jeder zweite Tag läuft schlechter.",
+            "Pünktlich an 4 von 5 Tagen: etwa einmal pro Woche zu spät.",
+            "Pünktlich an 9 von 10 Tagen: etwa zweimal im Monat zu spät.",
+            "Pünktlich an 19 von 20 Tagen: etwa einmal im Monat zu spät."],
+    buffer: "Mittlere Verspätung je Abschnitt:",
+    modes: { "S-Bahn": "S-Bahn", "Regional rail": "Regionalzug", "U-Bahn": "U-Bahn", "Tram": "Tram", "Bus": "Bus" },
+    people: "Einwohner innerhalb von", peopleRisk: "Einwohner, die man später erreicht als laut Fahrplan",
+    note: "Gestrichelt: dasselbe nach Fahrplan.",
+    riskRows: ["+5 min", "+10 min", "+20 min"], riskLegend: ["+5", "+10", "+20 min oder unerreichbar"],
+    riskNote: "Pink: wie viel länger die Fahrt dauert als laut Fahrplan, bei der oben gewählten Zuverlässigkeit. Linien: Fahrzeitzonen.",
+    riskOff: "Wählen Sie oben eine Zuverlässigkeit über „Fahrplan“, um zu sehen, wo Verspätungen am meisten kosten.",
+    loading: "Fahrplan wird geladen…",
+    how: "So wird gerechnet",
+    how1: "Ihr Browser durchsucht den Werktagsfahrplan (Dienstag, 20.10.2026, Rhein-Main) ab der gewählten Abfahrtszeit und findet die früheste Ankunft an jeder Haltestelle innerhalb einer Stunde. Fußwege: 4,8 km/h auf einem Weg, der 1,3-mal so lang ist wie die Luftlinie, bis zu 1 km zu und von Haltestellen; ein Umstieg dauert mindestens 2 Minuten.",
+    how2: "<b>Zuverlässigkeit</b> verschiebt die Ankunft jedes Abschnitts um die Verspätung, die bei diesem Anteil der Werktagsfahrten nicht überschritten wird – an dieser Haltestelle, auf dieser Linie, in dieser Stunde –, plus die erwartete Wartezeit durch Ausfälle. Die Verspätungen stammen aus den Echtzeitdaten der Verkehrsunternehmen seit dem 24.09.2026. Das Anschlussfahrzeug fährt im Modell pünktlich ab, eine Verspätung kann also den Anschluss kosten; dann nimmt die Route, was noch erreichbar ist. Jeder Abschnitt bekommt seinen eigenen Puffer, Fahrten mit Umstiegen sind daher vorsichtig geschätzt.",
+    how3: "Die Karte umfasst Frankfurt, Offenbach, Hanau, Darmstadt, Mainz, Wiesbaden und Friedberg (gestrichelter Rahmen); am Rand wird die Reichweite abgeschnitten. Bevölkerung: Zensus 2022, 100-m-Raster.",
+    foot: "Daten: DELFI / gtfs.de (CC BY-SA 4.0), Zensus 2022, © OpenStreetMap-Mitwirkende, Geokodierung Nominatim, Kartengrundlage © Esri.",
+    num: n => n >= 1e6 ? (n / 1e6).toFixed(2).replace(".", ",") + " Mio." : Math.round(n / 1000) + " Tsd.",
+  },
+};
+
+// ------------------------------------------------------------------ state
+const $ = id => document.getElementById(id);
+const b64 = (s, Type) => { const u = Uint8Array.from(atob(s), c => c.charCodeAt(0)); return new Type(u.buffer); };
+function saved() { try { return localStorage.getItem("lang"); } catch (e) { return null; } }
+const params = new URLSearchParams(location.search);
+let lang = params.get("lang") in T ? params.get("lang") : saved() in T ? saved()
+         : (navigator.language || "").toLowerCase().startsWith("de") ? "de" : "en";
+let view = "time", origin = START.slice(), placeName = "Frankfurt Hauptwache";
+const hash = location.hash.slice(1).split(",");
+if (hash.length >= 2 && !isNaN(+hash[0])) {
+  origin = [+hash[0], +hash[1]]; placeName = "";
+  if (hash[2] !== undefined) $("dep").value = hash[2];
+  if (hash[3] !== undefined) $("rel").value = hash[3];
+  if (hash[4] === "risk") view = "risk";
+}
+let redraw = () => {};
+
+function setLang(l) {
+  lang = l;
+  try { localStorage.setItem("lang", l); } catch (e) {}
+  document.documentElement.lang = l;
+  document.querySelectorAll("[data-i]").forEach(el => el.innerHTML = T[l][el.dataset.i]);
+  document.querySelectorAll("[data-ph]").forEach(el => el.placeholder = T[l][el.dataset.ph]);
+  document.querySelectorAll(".lang button").forEach(b => b.setAttribute("aria-pressed", b.dataset.lang === l));
+  redraw();
+}
+document.querySelectorAll(".lang button").forEach(b => b.addEventListener("click", () => setLang(b.dataset.lang)));
+setLang(lang);
+
+// ------------------------------------------------------------------ map
+const map = L.map("map", { zoomControl: false, minZoom: 9, maxZoom: 15 });
+L.control.zoom({ position: "topright" }).addTo(map);
+const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/";
+L.tileLayer(ESRI + "World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
+  attribution: 'Basemap © <a href="https://www.esri.com">Esri</a>, HERE, Garmin, © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom: 16 }).addTo(map);
+map.setView([origin[0] - .01, origin[1] - .03], 11);
+if (innerWidth <= 720) map.setView([origin[0] - .09, origin[1]], 10);
+L.tileLayer(ESRI + "World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}", { maxZoom: 16, pane: "shadowPane", opacity: .9 }).addTo(map);
+
+fetch("meta.json").then(r => r.json()).then(M => {
+  const [S, W, N, E] = M.box, DLAT = M.dlat, DLON = M.dlon, ROWS = M.rows, COLS = M.cols;
+  L.rectangle([[S, W], [N, E]], { color: "#8A90A8", weight: 1, dashArray: "5 6", fill: false, interactive: false }).addTo(map);
+
+  // local metric projection, plenty for 50 km
+  const LAT0 = 50.1, KX = Math.cos(LAT0 * Math.PI / 180) * 111320, KY = 110574;
+  const sLat = b64(M.stop_lat, Float32Array), sLon = b64(M.stop_lon, Float32Array), NS = sLat.length;
+  const sx = new Float64Array(NS), sy = new Float64Array(NS);
+  for (let i = 0; i < NS; i++) { sx[i] = sLon[i] * KX; sy[i] = sLat[i] * KY; }
+  const pop = b64(M.pop, Uint16Array);
+  const NCELL = ROWS * COLS;
+  const cx = c => (W + (c % COLS + .5) * DLON) * KX, cy = c => (S + (Math.floor(c / COLS) + .5) * DLAT) * KY;
+
+  // stop -> nearby cells (egress walk) and stop -> nearby stops (transfers)
+  const dr = Math.ceil(ACCESS_M / (DLAT * KY)) + 1, dc = Math.ceil(ACCESS_M / (DLON * KX)) + 1;
+  const scStart = new Int32Array(NS + 1), scCell = [], scWalk = [];
+  for (let i = 0; i < NS; i++) {
+    const r0 = Math.floor((sLat[i] - S) / DLAT), c0 = Math.floor((sLon[i] - W) / DLON);
+    for (let r = Math.max(0, r0 - dr); r <= Math.min(ROWS - 1, r0 + dr); r++)
+      for (let c = Math.max(0, c0 - dc); c <= Math.min(COLS - 1, c0 + dc); c++) {
+        const cell = r * COLS + c, d = Math.hypot(cx(cell) - sx[i], cy(cell) - sy[i]);
+        if (d <= ACCESS_M) { scCell.push(cell); scWalk.push(d / WALK); }
+      }
+    scStart[i + 1] = scCell.length;
+  }
+  const SC_CELL = Int32Array.from(scCell), SC_WALK = Float32Array.from(scWalk);
+  const bucket = new Map(), key = (x, y) => Math.floor(x / TRANSFER_M) + "," + Math.floor(y / TRANSFER_M);
+  for (let i = 0; i < NS; i++) { const k = key(sx[i], sy[i]); (bucket.get(k) || bucket.set(k, []).get(k)).push(i); }
+  const fp = Array.from({ length: NS }, () => []);
+  for (let i = 0; i < NS; i++) {
+    const bx = Math.floor(sx[i] / TRANSFER_M), by = Math.floor(sy[i] / TRANSFER_M);
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++)
+      for (const j of bucket.get((bx + a) + "," + (by + b)) || []) {
+        const d = Math.hypot(sx[i] - sx[j], sy[i] - sy[j]);
+        if (d <= TRANSFER_M) fp[i].push(j, d / WALK);
+      }
+  }
+
+  // timetable chunks by departure hour, fetched on demand
+  const chunks = new Map();
+  function chunk(h) {
+    if (!chunks.has(h)) {
+      const name = String(h).padStart(2, "0");
+      chunks.set(h, M.hours.includes(h) ? fetch(`c/${name}.json`).then(r => r.json()).then(J => ({
+        u: b64(J.u, Uint16Array), v: b64(J.v, Uint16Array), dep: b64(J.dep, Uint16Array), arr: b64(J.arr, Uint16Array),
+        trip: b64(J.trip, Uint16Array), q: M.quantiles.map(q => b64(J[q], Uint8Array)) })) : Promise.resolve(null));
+    }
+    return chunks.get(h);
+  }
+
+  // forward connection scan: earliest arrival per cell (s after T), or Infinity
+  const ready = new Float64Array(NS), alight = new Float64Array(NS), onTrip = new Uint8Array(65536);
+  function reach(parts, T, level) {
+    ready.fill(Infinity); alight.fill(Infinity); onTrip.fill(0);
+    const ox = origin[1] * KX, oy = origin[0] * KY;
+    for (let i = 0; i < NS; i++) {
+      const d = Math.hypot(sx[i] - ox, sy[i] - oy);
+      if (d <= ACCESS_M) ready[i] = T + d / WALK;
+    }
+    const end = T + HORIZON_S;
+    for (const P of parts) {
+      if (!P) continue;
+      const q = level > 0 ? P.q[level - 1] : null;
+      for (let k = 0; k < P.u.length; k++) {
+        const dep = P.dep[k] * 10;
+        if (dep < T) continue;
+        if (dep > end) break;
+        const t = P.trip[k];
+        if (!onTrip[t]) { if (dep < ready[P.u[k]]) continue; onTrip[t] = 1; }
+        const a = P.arr[k] * 10 + (q ? q[k] * 10 : 0), v = P.v[k];
+        if (a >= end || a >= alight[v]) continue;
+        alight[v] = a;
+        const f = fp[v];
+        for (let j = 0; j < f.length; j += 2) {
+          const r = a + f[j + 1] + BUFFER_S;
+          if (r < ready[f[j]]) ready[f[j]] = r;
+        }
+      }
+    }
+    const tt = new Float32Array(NCELL).fill(Infinity);
+    for (let i = 0; i < NS; i++) {
+      if (alight[i] >= end) continue;
+      for (let k = scStart[i]; k < scStart[i + 1]; k++) {
+        const v = alight[i] - T + SC_WALK[k];
+        if (v < tt[SC_CELL[k]]) tt[SC_CELL[k]] = v;
+      }
+    }
+    // walking all the way
+    const r0 = Math.floor((origin[0] - S) / DLAT), c0 = Math.floor((origin[1] - W) / DLON);
+    const wr = Math.ceil(HORIZON_S * WALK / (DLAT * KY)), wc = Math.ceil(HORIZON_S * WALK / (DLON * KX));
+    for (let r = Math.max(0, r0 - wr); r <= Math.min(ROWS - 1, r0 + wr); r++)
+      for (let c = Math.max(0, c0 - wc); c <= Math.min(COLS - 1, c0 + wc); c++) {
+        const cell = r * COLS + c, v = Math.hypot(cx(cell) - ox, cy(cell) - oy) / WALK;
+        if (v < tt[cell]) tt[cell] = v;
+      }
+    return tt;
+  }
+
+  // ------------------------------------------------------------------ drawing
+  const contour = d3.contours().size([COLS, ROWS]).smooth(true);
+  const toLatLng = ring => ring.map(([x, y]) => [S + y * DLAT, W + x * DLON]);
+  const bandLayer = L.layerGroup().addTo(map), riskLayer = L.layerGroup().addTo(map);
+  const grid = new Float64Array(NCELL);
+  function rings(layer, values, thresholds, style) {
+    layer.clearLayers();
+    const shapes = contour.thresholds(thresholds)(values).sort((a, b) => a.value - b.value);
+    shapes.forEach((sh, k) => {
+      const inner = k + 1 < shapes.length ? shapes[k + 1].coordinates : [];
+      const polys = sh.coordinates.concat(inner).map(p => p.map(toLatLng));
+      if (polys.length) L.polygon(polys, { ...style(k), fillRule: "evenodd", interactive: false, smoothFactor: .6 }).addTo(layer);
+    });
+  }
+  function legend() {
+    const cols = view === "time" ? COLORS : RISK_COLORS;
+    const labels = view === "time" ? BANDS.map((b, i) => i === BANDS.length - 1 ? b + " min" : b) : T[lang].riskLegend;
+    $("legend").style.gridTemplateColumns = $("legend-l").style.gridTemplateColumns = `repeat(${cols.length}, 1fr)`;
+    $("legend").innerHTML = cols.map(c => `<div style="background:${c}"></div>`).join("");
+    $("legend-l").innerHTML = labels.map(t => `<span>${t}</span>`).join("");
+  }
+
+  const marker = L.marker(origin, { draggable: true, keyboard: true, zIndexOffset: 1000, title: "Start",
+    icon: L.divIcon({ className: "", iconSize: [30, 30], iconAnchor: [15, 15], html: '<div class="origin"></div>' }) }).addTo(map);
+  marker.on("dragend", () => { const p = marker.getLatLng(); setOrigin([p.lat, p.lng], ""); });
+  map.on("click", ev => setOrigin([ev.latlng.lat, ev.latlng.lng], ""));
+
+  const inside = p => p[0] > S && p[0] < N && p[1] > W && p[1] < E;
+  function setOrigin(p, name) {
+    origin = p; placeName = name; marker.setLatLng(p); draw();
+  }
+
+  const fmtT = s => `${String(Math.floor(s / 3600)).padStart(2, "0")}:${String(Math.floor(s % 3600 / 60)).padStart(2, "0")}`;
+  let seq = 0;
+  async function draw() {
+    const my = ++seq, level = +$("rel").value, T0 = 5 * 3600 + 15 * 60 * +$("dep").value, h = Math.floor(T0 / 3600);
+    $("relv").textContent = T[lang].levels[level];
+    $("relh").textContent = T[lang].hints[level];
+    $("depv").textContent = fmtT(T0);
+    const md = level > 0 ? (M.mode_delay[M.levels[level]][h] || {}) : {};
+    const dec = v => lang === "de" ? v.toFixed(1).replace(".", ",") : v.toFixed(1);
+    $("modes").innerHTML = level === 0 ? "" : `<span class="lbl">${T[lang].buffer}</span>` +
+      Object.keys(md).sort((a, b) => md[b] - md[a]).map(m => `<span>${T[lang].modes[m] || m}<b>+${dec(md[m])} min</b></span>`).join("");
+    $("where").innerHTML = inside(origin)
+      ? `${T[lang].here} <b>${placeName || origin[0].toFixed(4) + ", " + origin[1].toFixed(4)}</b><br>${T[lang].clickHint}`
+      : T[lang].outside;
+    legend();
+    history.replaceState(null, "", `${location.search}#${origin[0].toFixed(5)},${origin[1].toFixed(5)},${$("dep").value},${level},${view}`);
+    if (!inside(origin)) { bandLayer.clearLayers(); riskLayer.clearLayers(); $("rows").innerHTML = ""; return; }
+
+    $("busy").textContent = T[lang].loading; $("busy").style.display = chunks.has(h) && chunks.has(h + 1) ? "none" : "block";
+    const parts = await Promise.all([chunk(h), chunk(h + 1)]);
+    $("busy").style.display = "none";
+    if (my !== seq) return;                          // a newer request is on its way
+
+    const tt = reach(parts, T0, level);
+    const base = level > 0 ? reach(parts, T0, 0) : tt;
+    for (let c = 0; c < NCELL; c++) grid[c] = tt[c] <= 3600 ? -Math.ceil(tt[c] / 60) : -999;
+    rings(bandLayer, grid, BANDS.map(b => -b - .5), k => {
+      const i = BANDS.length - 1 - k;
+      return { color: COLORS[i], weight: 1.4, opacity: view === "time" ? .95 : .55,
+               fillColor: COLORS[i], fillOpacity: view === "time" ? FILL[i] : 0 };
+    });
+
+    riskLayer.clearLayers();
+    if (view === "risk") {
+      $("statsh").textContent = T[lang].peopleRisk;
+      $("note").textContent = level > 0 ? T[lang].riskNote : T[lang].riskOff;
+      if (level === 0) { $("rows").innerHTML = ""; return; }
+      const g = new Float64Array(NCELL).fill(-999), people = [0, 0, 0];
+      for (let c = 0; c < NCELL; c++) {
+        if (base[c] > 3600) continue;
+        const d = tt[c] > 3600 ? 99 : Math.ceil(tt[c] / 60) - Math.ceil(base[c] / 60);
+        g[c] = d;
+        RISK.forEach((r, k) => { if (d >= r) people[k] += pop[c]; });
+      }
+      rings(riskLayer, g, RISK.map(r => r - .5), i => ({ color: RISK_COLORS[i], weight: 1.2, opacity: .9, fillColor: RISK_COLORS[i], fillOpacity: RISK_FILL[i] }));
+      const max = Math.max(1, ...people);
+      $("rows").innerHTML = RISK.map((r, k) => `<div class="row"><span class="k">${T[lang].riskRows[k]}</span>
+        <span class="bar"><i style="width:${people[k] / max * 100}%;background:${RISK_COLORS[k]}"></i></span>
+        <span class="v">${T[lang].num(people[k])}</span></div>`).join("");
+      return;
+    }
+    $("statsh").textContent = T[lang].people; $("note").textContent = T[lang].note;
+    const now = BANDS.map(() => 0), was = BANDS.map(() => 0);
+    for (let c = 0; c < NCELL; c++) {
+      if (!pop[c]) continue;
+      BANDS.forEach((b, i) => { if (tt[c] <= b * 60) now[i] += pop[c]; if (base[c] <= b * 60) was[i] += pop[c]; });
+    }
+    const max = Math.max(1, ...was);
+    $("rows").innerHTML = BANDS.map((b, i) => {
+      const loss = was[i] ? 1 - now[i] / was[i] : 0;
+      return `<div class="row"><span class="k">${b} min</span>
+        <span class="bar"><i class="ghost" style="width:${was[i] / max * 100}%"></i><i style="width:${now[i] / max * 100}%;background:${COLORS[i]}"></i></span>
+        <span class="v">${T[lang].num(now[i])}${level > 0 && loss > .005 ? `<span class="d">−${Math.round(loss * 100)}%</span>` : ""}</span></div>`;
+    }).join("");
+  }
+
+  // ------------------------------------------------------------------ controls
+  let pending = 0;
+  const soon = () => { cancelAnimationFrame(pending); pending = requestAnimationFrame(draw); };
+  $("rel").addEventListener("input", soon); $("dep").addEventListener("input", soon);
+  document.querySelectorAll(".view button").forEach(btn => {
+    btn.setAttribute("aria-pressed", btn.dataset.view === view);
+    btn.addEventListener("click", () => {
+      view = btn.dataset.view;
+      document.querySelectorAll(".view button").forEach(b => b.setAttribute("aria-pressed", b === btn));
+      draw();
+    });
+  });
+  $("search").addEventListener("submit", async ev => {
+    ev.preventDefault();
+    const q = $("q").value.trim();
+    if (!q) return;
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&bounded=1&countrycodes=de` +
+                `&viewbox=${W},${N},${E},${S}&accept-language=${lang}&q=${encodeURIComponent(q)}`;
+    try {
+      const res = await (await fetch(url)).json();
+      if (!res.length) { $("where").textContent = T[lang].notFound; return; }
+      const p = [+res[0].lat, +res[0].lon];
+      map.setView(p, Math.max(map.getZoom(), 11));
+      setOrigin(p, res[0].display_name.split(",").slice(0, 2).join(","));
+    } catch (e) { $("where").textContent = T[lang].notFound; }
+  });
+  redraw = draw;
+  draw();
+});
+</script>
+</body>
+</html>
