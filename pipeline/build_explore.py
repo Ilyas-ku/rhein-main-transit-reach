@@ -17,16 +17,27 @@ than MIN_N observations.
 import base64
 import glob
 import json
+import os
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from build import BOX, DLAT, DLON, MIN_N
+from build import DLAT, DLON, MIN_N
 
 HERE = Path(__file__).resolve().parent
-SRC = HERE / "data" / "full"
-OUT = HERE / "explore"
+# one site per city: CITY=München python build_explore.py
+CITY = os.environ.get("CITY", "Frankfurt")
+SITES = {
+    "Frankfurt": dict(box=(49.85, 8.20, 50.35, 9.00), src=HERE / "data" / "full",
+                      stops=HERE / "data" / "stops.parquet", pop=HERE / "data" / "population.parquet",
+                      out=HERE / "explore"),
+    "München": dict(box=(47.95, 11.20, 48.40, 11.95), src=HERE / "data" / "muc",
+                    stops=HERE / "data" / "muc" / "stops.parquet", pop=HERE / "data" / "muc" / "population.parquet",
+                    out=HERE / "explore_muc"),
+}
+SITE = SITES[CITY]
+BOX, SRC, OUT = SITE["box"], SITE["src"], SITE["out"]
 Q = ["q50", "q80", "q90", "q95"]
 LEVELS = ["Timetable", "1 in 2 days", "4 in 5 days", "9 in 10 days", "19 in 20 days"]
 
@@ -47,8 +58,13 @@ def leg_buffers(c, stops, dl):
 
     c = c.merge(stops[["stop", "stop_key"]], left_on="arr_stop", right_on="stop", how="left")
     c["hour"] = (c.arr_s // 3600) % 24
-    own = dl[dl.n >= MIN_N].set_index(["stop_key", "line", "hour"])[Q + ["cancel_rate"]]
-    a = c.join(own, on=["stop_key", "line", "hour"])
+    # keyed by mode too: a tram and its replacement bus can share line number and stop
+    # (München line 25, 2026-11). Without it the join duplicates rows and every
+    # buffer after the first duplicate lands on the wrong leg.
+    own = dl[dl.n >= MIN_N].set_index(["stop_key", "line", "mode", "hour"])[Q + ["cancel_rate"]]
+    assert own.index.is_unique, "delay table has duplicate stop/line/mode/hour keys"
+    a = c.join(own, on=["stop_key", "line", "mode", "hour"])
+    assert len(a) == len(c), "buffer join changed the number of legs"
     b = c.join(line[Q + ["cancel_rate"]], on=["line", "mode", "hour"])
     m = c.join(mode, on=["mode", "hour"])
     z = c.join(allh, on="mode")
@@ -61,9 +77,9 @@ def leg_buffers(c, stops, dl):
 
 def main():
     con = pd.read_parquet(SRC / "connections_full.parquet")
-    stops = pd.read_parquet(HERE / "data" / "stops.parquet").drop_duplicates("stop")
+    stops = pd.read_parquet(SITE["stops"]).drop_duplicates("stop")
     dl = pd.concat([pd.read_parquet(f) for f in sorted(glob.glob(str(SRC / "delays_*.parquet")))])
-    pop = pd.read_parquet(HERE / "data" / "population.parquet")
+    pop = pd.read_parquet(SITE["pop"])
 
     stops = stops[stops.stop.isin(set(con.dep_stop) | set(con.arr_stop))].reset_index(drop=True)
     sid = {s: i for i, s in enumerate(stops.stop)}
@@ -104,7 +120,7 @@ def main():
 
     meta = {
         "box": BOX, "dlat": DLAT, "dlon": DLON, "rows": rows, "cols": cols,
-        "day": "Tuesday 20 Oct 2026", "levels": LEVELS, "quantiles": Q,
+        "day": {"Frankfurt": "Tuesday 20 Oct 2026", "München": "Tuesday 10 Nov 2026"}[CITY], "city": CITY, "levels": LEVELS, "quantiles": Q,
         "hours": [int(h) for h in sorted(hours.unique())],
         "stop_lat": b64(stops.stop_lat.to_numpy(np.float32)), "stop_lon": b64(stops.stop_lon.to_numpy(np.float32)),
         "pop": b64(np.clip(np.round(cell_pop), 0, 65535).astype(np.uint16)),
