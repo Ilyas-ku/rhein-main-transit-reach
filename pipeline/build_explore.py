@@ -31,10 +31,43 @@ CITY = os.environ.get("CITY", "Frankfurt")
 SITES = {
     "Frankfurt": dict(box=(49.85, 8.20, 50.35, 9.00), src=HERE / "data" / "full",
                       stops=HERE / "data" / "stops.parquet", pop=HERE / "data" / "population.parquet",
-                      out=HERE / "explore"),
+                      out=HERE / "explore", page=dict(
+        TITLE="Rhein-Main transit reach", URL="https://ilyas-ku.github.io/rhein-main-transit-reach/",
+        KICKER_EN="Rhein-Main", KICKER_DE="Rhein-Main", REGION_EN="Rhein-Main", REGION_DE="Rhein-Main",
+        IN_REGION_DE="im Rhein-Main-Gebiet", START=(50.1141, 8.6788), START_NAME="Frankfurt Hauptwache",
+        EXAMPLE="Bockenheimer Warte", DAY_EN="Tuesday 20 Oct 2026", DAY_DE="Dienstag, 20.10.2026",
+        AREA_EN="Frankfurt, Offenbach, Hanau, Darmstadt, Mainz, Wiesbaden and Friedberg",
+        AREA_DE="Frankfurt, Offenbach, Hanau, Darmstadt, Mainz, Wiesbaden und Friedberg")),
     "München": dict(box=(47.95, 11.20, 48.40, 11.95), src=HERE / "data" / "muc",
                     stops=HERE / "data" / "muc" / "stops.parquet", pop=HERE / "data" / "muc" / "population.parquet",
-                    out=HERE / "explore_muc"),
+                    out=HERE / "explore_muc", page=dict(
+        TITLE="Munich transit reach", URL="https://ilyas-ku.github.io/munich-transit-reach/",
+        KICKER_EN="Munich", KICKER_DE="München", REGION_EN="the Munich region", REGION_DE="Großraum München",
+        IN_REGION_DE="im Großraum München", START=(48.1372, 11.5755), START_NAME="München Marienplatz",
+        EXAMPLE="Sendlinger Tor", DAY_EN="Tuesday 10 Nov 2026", DAY_DE="Dienstag, 10.11.2026",
+        AREA_EN="Munich and its surroundings, from Freising and Erding to Fürstenfeldbruck, Starnberg and Ebersberg",
+        AREA_DE="München und Umland, von Freising und Erding bis Fürstenfeldbruck, Starnberg und Ebersberg")),
+    "Stuttgart": dict(box=(48.60, 8.90, 48.95, 9.45), src=HERE / "data" / "str",
+                      stops=HERE / "data" / "str" / "stops.parquet", pop=HERE / "data" / "str" / "population.parquet",
+                      out=HERE / "explore_str", page=dict(
+        TITLE="Stuttgart transit reach", URL="https://ilyas-ku.github.io/stuttgart-transit-reach/",
+        KICKER_EN="Stuttgart", KICKER_DE="Stuttgart", REGION_EN="the Stuttgart region", REGION_DE="Region Stuttgart",
+        IN_REGION_DE="in der Region Stuttgart", START=(48.7840, 9.1817), START_NAME="Stuttgart Hauptbahnhof",
+        EXAMPLE="Charlottenplatz", DAY_EN="Tuesday 20 Oct 2026", DAY_DE="Dienstag, 20.10.2026",
+        AREA_EN="Stuttgart, Esslingen, Ludwigsburg, Böblingen, Sindelfingen and Waiblingen",
+        AREA_DE="Stuttgart, Esslingen, Ludwigsburg, Böblingen, Sindelfingen und Waiblingen")),
+    # Düsseldorf and Köln as one region: the two collector boxes touch, and the
+    # Düsseldorf box alone cuts every isochrone at the Köln border
+    "Düsseldorf": dict(box=(50.80, 6.50, 51.42, 7.20), src=HERE / "data" / "dus",
+                       stops=HERE / "data" / "dus" / "stops.parquet", pop=HERE / "data" / "dus" / "population.parquet",
+                       out=HERE / "explore_dus", page=dict(
+        TITLE="Düsseldorf & Köln transit reach", URL="https://ilyas-ku.github.io/duesseldorf-koeln-transit-reach/",
+        KICKER_EN="Düsseldorf · Köln", KICKER_DE="Düsseldorf · Köln", REGION_EN="the Düsseldorf–Köln region",
+        REGION_DE="Raum Düsseldorf–Köln", IN_REGION_DE="im Raum Düsseldorf–Köln", START=(51.2200, 6.7942),
+        START_NAME="Düsseldorf Hauptbahnhof", EXAMPLE="Heinrich-Heine-Allee",
+        DAY_EN="Tuesday 13 Oct 2026", DAY_DE="Dienstag, 13.10.2026",
+        AREA_EN="Düsseldorf and Köln with their surroundings, from Krefeld and Ratingen to Leverkusen, Bergisch Gladbach and Brühl",
+        AREA_DE="Düsseldorf und Köln mit Umland, von Krefeld und Ratingen bis Leverkusen, Bergisch Gladbach und Brühl")),
 }
 SITE = SITES[CITY]
 BOX, SRC, OUT = SITE["box"], SITE["src"], SITE["out"]
@@ -120,13 +153,22 @@ def main():
 
     meta = {
         "box": BOX, "dlat": DLAT, "dlon": DLON, "rows": rows, "cols": cols,
-        "day": {"Frankfurt": "Tuesday 20 Oct 2026", "München": "Tuesday 10 Nov 2026"}[CITY], "city": CITY, "levels": LEVELS, "quantiles": Q,
+        "day": SITE["page"]["DAY_EN"], "city": CITY, "levels": LEVELS, "quantiles": Q,
         "hours": [int(h) for h in sorted(hours.unique())],
         "stop_lat": b64(stops.stop_lat.to_numpy(np.float32)), "stop_lon": b64(stops.stop_lon.to_numpy(np.float32)),
+        "stop_name": stops.stop_name.fillna("").tolist(),
         "pop": b64(np.clip(np.round(cell_pop), 0, 65535).astype(np.uint16)),
         "mode_delay": mode_delay,
     }
-    json.dump(meta, open(OUT / "meta.json", "w"), separators=(",", ":"))
+    json.dump(meta, open(OUT / "meta.json", "w", encoding="utf-8"), separators=(",", ":"), ensure_ascii=False)
+    # the page: one template for every city, filled in here
+    page = (HERE / "site" / "template.html").read_text(encoding="utf-8")
+    cfg = dict(SITE["page"], START_LAT=str(SITE["page"]["START"][0]), START_LON=str(SITE["page"]["START"][1]))
+    for k, v in cfg.items():
+        if k != "START":
+            page = page.replace("{{" + k + "}}", v)
+    assert "{{" not in page, "unfilled placeholder in template"
+    (OUT / "index.html").write_text(page, encoding="utf-8")
     sizes = sorted((f.stat().st_size for f in (OUT / "c").glob("*.json")), reverse=True)
     print(f"{len(stops)} stops, {con.t.max() + 1} trips, {len(con)} connections; "
           f"meta {(OUT / 'meta.json').stat().st_size / 1e6:.1f} MB, biggest hour {sizes[0] / 1e6:.2f} MB")

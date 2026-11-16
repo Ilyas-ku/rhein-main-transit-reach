@@ -3,28 +3,38 @@
 Usage: export_inputs.py [FROM_H TO_H]  (default 4.5 11; full day: 3 28)
 
   connections.parquet  every timetabled hop (stop -> next stop) of trips that
-                       run on DAY, Frankfurt metro box, 04:30-11:00
+                       run on DAY, CITY metro box, 04:30-11:00
   stops.parquet        stops of that timetable with stop_key and coordinates
   (delays: export_delays.py, one hour per query)
 """
+import datetime as dt
+import os
 import sys
 sys.path.insert(0, "/home/transit/frankfurt-transit-delays")
 from config import connect_db
 
-DAY = "20261020"                       # Tuesday, first school day after the Hessian break
+# CITY / DAY / OUT from the environment, e.g. CITY=München DAY=20261110 OUT=/tmp/iso_muc
+CITY = os.environ.get("CITY", "Frankfurt")          # several: CITY=Düsseldorf,Köln
+CITIES_SQL = ", ".join(f"'{c.strip()}'" for c in CITY.split(","))
+DAY = os.environ.get("DAY", "20261020")             # Frankfurt: first school day after the Hessian break
+WEEKDAY = dt.datetime.strptime(DAY, "%Y%m%d").strftime("%A").lower()
 FROM_H, TO_H = (float(sys.argv[1]), float(sys.argv[2])) if len(sys.argv) > 2 else (4.5, 11)
 SUFFIX = "" if len(sys.argv) <= 2 else "_full"
-OUT = "/tmp/iso"
+OUT = os.environ.get("OUT", "/tmp/iso")
+os.makedirs(OUT, exist_ok=True)
 con = connect_db(read_only=True)
 con.execute("SET memory_limit='1GB'")
 con.execute("SET threads=2")
-ver = con.execute("SELECT ref_version FROM ref_versions ORDER BY loaded_at_utc DESC LIMIT 1").fetchone()[0]
+# VER: an older timetable version, for a DAY before the current one starts
+# (tools/day_check.py finds weekdays without rail-replacement buses)
+ver = os.environ.get("VER") or con.execute(
+    "SELECT ref_version FROM ref_versions ORDER BY loaded_at_utc DESC LIMIT 1").fetchone()[0]
 print("version", ver)
 con.execute(f"""
     CREATE TEMP TABLE active AS
     WITH cal AS (
         SELECT feed, service_id FROM ffm_calendar
-        WHERE ref_version = '{ver}' AND tuesday = 1 AND start_date <= '{DAY}' AND end_date >= '{DAY}'
+        WHERE ref_version = '{ver}' AND {WEEKDAY} = 1 AND start_date <= '{DAY}' AND end_date >= '{DAY}'
         UNION
         SELECT feed, service_id FROM ffm_calendar_dates
         WHERE ref_version = '{ver}' AND date = '{DAY}' AND exception_type = 1
@@ -44,7 +54,7 @@ con.execute(f"""
     JOIN active a ON a.feed = t.feed AND a.service_id = t.service_id
     JOIN ffm_stop_times st ON st.ref_version = t.ref_version AND st.feed = t.feed AND st.trip_id = t.trip_id
     JOIN ffm_stops s ON s.ref_version = st.ref_version AND s.feed = st.feed AND s.stop_id = st.stop_id
-    WHERE t.ref_version = '{ver}' AND s.city = 'Frankfurt'
+    WHERE t.ref_version = '{ver}' AND s.city IN ({CITIES_SQL})
 """)
 con.execute(f"""
     COPY (
@@ -57,7 +67,7 @@ con.execute(f"""
     ) TO '{OUT}/connections{SUFFIX}.parquet' (FORMAT parquet)""")
 con.execute(f"""
     COPY (SELECT DISTINCT s.feed || ':' || s.stop_id AS stop, s.stop_key, s.stop_name, s.stop_lat, s.stop_lon
-          FROM ffm_stops s WHERE s.ref_version = '{ver}' AND s.city = 'Frankfurt')
+          FROM ffm_stops s WHERE s.ref_version = '{ver}' AND s.city IN ({CITIES_SQL}))
     TO '{OUT}/stops.parquet' (FORMAT parquet)""")
 for f in [f"connections{SUFFIX}", "stops"]:
     print(f, con.execute(f"SELECT count(*) FROM '{OUT}/{f}.parquet'").fetchone()[0])

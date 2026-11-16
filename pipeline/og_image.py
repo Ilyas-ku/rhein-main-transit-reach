@@ -5,7 +5,14 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 HERE = Path(__file__).resolve().parent
-URL = "https://ilyas-ku.github.io/rhein-main-transit-reach/?lang=en#50.11410,8.67880,12,0,time"
+import os
+CITY = os.environ.get("CITY", "Frankfurt")
+SITE = {"Frankfurt": dict(url="https://ilyas-ku.github.io/rhein-main-transit-reach/", pt=(50.1141, 8.6788), name="Hauptwache", region="RHEIN-MAIN", out="explore"),
+        "München": dict(url="http://localhost:8767/", pt=(48.1372, 11.5755), name="Marienplatz", region="MUNICH", out="explore_muc"),
+        "Stuttgart": dict(url="http://localhost:8768/", pt=(48.7840, 9.1817), name="Stuttgart Hbf", region="STUTTGART", out="explore_str"),
+        "Düsseldorf": dict(url="http://localhost:8769/", pt=(51.2200, 6.7942), name="Düsseldorf Hbf", region="DÜSSELDORF · KÖLN", out="explore_dus")}[CITY]
+URL = SITE["url"] + f"?lang=en#{SITE['pt'][0]:.5f},{SITE['pt'][1]:.5f},12,0,time"
+VIEW = SITE.get("view", (SITE["pt"][0] - .02, SITE["pt"][1] - .1, 10.6))
 CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 
 with sync_playwright() as p:
@@ -14,7 +21,7 @@ with sync_playwright() as p:
     pg.goto(URL)
     pg.wait_for_function("document.querySelectorAll('.leaflet-overlay-pane path').length > 1", timeout=60000)
     pg.evaluate("""(() => {
-      map.setView([50.1141 - .02, 8.6788 - .1], 10.6, {animate: false});
+      map.setView([%VLAT%, %VLON%], %VZ%, {animate: false});
       document.getElementById('panel').style.display = 'none';
       document.querySelector('.leaflet-control-zoom').style.display = 'none';
       const css = document.createElement('style');
@@ -27,13 +34,14 @@ with sync_playwright() as p:
         #og .tag i { display: inline-block; width: 24px; height: 11px; border-radius: 3px; }`;
       document.head.appendChild(css);
       const d = document.createElement('div'); d.id = 'og';
-      d.innerHTML = '<div class="k">RHEIN-MAIN · PUBLIC TRANSPORT</div><h1>How far do you get<br>in an hour?</h1>' +
+      d.innerHTML = '<div class="k">%REGION% · PUBLIC TRANSPORT</div><h1>How far do you get<br>in an hour?</h1>' +
         '<p>An interactive map that counts real delays,<br>comparing them with the timetable</p>' +
-        '<div class="tag"><i style="background:#26FFDB"></i><i style="background:#07B89C"></i><i style="background:#066E5E"></i>20 → 60 min from Hauptwache, 08:00</div>';
+        '<div class="tag"><i style="background:#26FFDB"></i><i style="background:#07B89C"></i><i style="background:#066E5E"></i>20 → 60 min from %NAME%, 08:00</div>';
       document.body.appendChild(d);
-    })()""")
+    })()""".replace("%VLAT%", str(VIEW[0])).replace("%VLON%", str(VIEW[1])).replace("%VZ%", str(VIEW[2]))
+        .replace("%REGION%", SITE["region"]).replace("%NAME%", SITE["name"]))
     pg.wait_for_timeout(3500)
-    out = HERE / "explore" / "preview.png"
+    out = HERE / SITE["out"] / "preview.png"
     pg.screenshot(path=str(out))
     b.close()
     print("wrote", out)

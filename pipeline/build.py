@@ -66,8 +66,13 @@ def leg_delays(con, stops, dl):
 
     c = con.merge(stops[["stop", "stop_key"]], left_on="arr_stop", right_on="stop", how="left")
     c["hour"] = (c.arr_s // 3600).clip(5, 10)
-    own = dl[dl.n >= MIN_N].set_index(["stop_key", "line", "hour"])[q + ["cancel_rate"]]
-    a = c.join(own, on=["stop_key", "line", "hour"])
+    # keyed by mode too: a tram and its replacement bus can share line number and stop
+    # (München line 25, 2026-11). Without it the join duplicates rows and every
+    # buffer after the first duplicate lands on the wrong leg.
+    own = dl[dl.n >= MIN_N].set_index(["stop_key", "line", "mode", "hour"])[q + ["cancel_rate"]]
+    assert own.index.is_unique, "delay table has duplicate stop/line/mode/hour keys"
+    a = c.join(own, on=["stop_key", "line", "mode", "hour"])
+    assert len(a) == len(c), "buffer join changed the number of legs"
     b = c.join(line[q + ["cancel_rate"]], on=["line", "mode", "hour"])
     m = c.join(mode, on=["mode", "hour"])
     for col in q + ["cancel_rate"]:

@@ -16,6 +16,9 @@ and how far that reach shrinks once real delays and cancellations are counted.
 - **Reliability levels:** every leg's arrival is pushed back by the delay quantile for
   that stop/line/hour plus the expected wait from cancellations; the next vehicle is
   assumed on time, so missed connections are part of the result.
+- **Commute cost:** home ● and work ◆; a reverse Connection Scan (latest departure that still
+  arrives by the chosen time) in the morning and a forward one 9 h later, timetable vs. the
+  chosen reliability level, averaged over arrivals ±30 min, times the commute days a year.
 - **Population:** Zensus 2022, 100 m grid.
 
 `pipeline/`: `export_inputs.py 3 28` and `export_delays.py 0 24` run against the
