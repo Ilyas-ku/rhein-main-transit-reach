@@ -223,7 +223,9 @@ const T = {
     morning: "Morning to work", evening: t => `Back home, leaving ${t}`, timetable: "timetable", planned: "plan",
     worstH: "Where commuting to ◆ costs the most", worstNote: "Towns and districts with 3,000+ residents, by hours lost a year.",
     costOff: "Pick a reliability above “timetable”: at timetable times nothing is lost.",
-    unreach: "not reachable within 2 hours", costLegend: ["50", "100", "150", "200+ h/year"],
+    unreach: "not reachable within 2 hours",
+    costHint: "◆ is your workplace. Click the map where you live (●) to see how many hours a year delays cost you. To move ◆, drag it or switch “Map click sets” to Work.",
+    costLegend: ["50", "100", "150", "200+ h/year"],
     costNote: "Yellow to pink: hours a year someone living there loses commuting to ◆.",
     rel: "I need to be on time", tt: "timetable", dep: "Leave at",
     levels: ["Timetable", "1 in 2 days", "4 in 5 days", "9 in 10 days", "19 in 20 days"],
@@ -263,7 +265,9 @@ const T = {
     morning: "Morgens zur Arbeit", evening: t => `Zurück, Abfahrt ${t}`, timetable: "Fahrplan", planned: "einplanen",
     worstH: "Wo das Pendeln zu ◆ am meisten kostet", worstNote: "Orte und Stadtteile ab 3.000 Einwohnern, nach Stunden pro Jahr.",
     costOff: "Wählen Sie oben eine Zuverlässigkeit über „Fahrplan“: nach Fahrplan geht keine Zeit verloren.",
-    unreach: "nicht innerhalb von 2 Stunden erreichbar", costLegend: ["50", "100", "150", "200+ Std./Jahr"],
+    unreach: "nicht innerhalb von 2 Stunden erreichbar",
+    costHint: "◆ ist der Arbeitsplatz. Klicken Sie auf Ihren Wohnort (●), um zu sehen, wie viele Stunden im Jahr Verspätungen kosten. ◆ verschieben: ziehen oder „Klick auf die Karte setzt“ auf Arbeit stellen.",
+    costLegend: ["50", "100", "150", "200+ Std./Jahr"],
     costNote: "Gelb bis Pink: Stunden im Jahr, die man von dort beim Pendeln zu ◆ verliert.",
     rel: "Ich muss pünktlich sein", tt: "Fahrplan", dep: "Abfahrt um",
     levels: ["Fahrplan", "1 von 2 Tagen", "4 von 5 Tagen", "9 von 10 Tagen", "19 von 20 Tagen"],
@@ -653,7 +657,10 @@ fetch("meta.json").then(r => r.json()).then(M => {
 
     const c = cellOf(origin), m = s => Math.round(s / 60), t = T[lang];
     const dec = v => lang === "de" ? v.toFixed(1).replace(".", ",") : v.toFixed(1);
-    if (c < 0 || isNaN(lost(c))) {
+    const sameSpot = Math.hypot((origin[0] - work[0]) * KY, (origin[1] - work[1]) * KX) < 500;
+    if (sameSpot) {
+      $("card").innerHTML = `<div class="sub">${t.costHint}</div>`;
+    } else if (c < 0 || isNaN(lost(c))) {
       $("card").innerHTML = `<div class="sub">${t.unreach}</div>`;
     } else {
       const day = lost(c), year = day / 3600 * days;
