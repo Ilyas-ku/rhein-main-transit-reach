@@ -60,17 +60,6 @@
   .view button[data-view="risk"][aria-pressed="true"] { background: rgba(255, 51, 150, .16); color: #FF86BD; }
   .view button[data-view="cost"][aria-pressed="true"] { background: rgba(255, 221, 51, .14); color: #FFE680; }
   #commute { display: none; }
-  .placeby { display: grid; grid-template-columns: auto 1fr 1fr; gap: 6px; align-items: center; margin: 12px 0 2px; font-size: 13px; color: var(--text2); }
-  .placeby button { font: 600 13px 'IBM Plex Sans', sans-serif; color: var(--text2); background: #11162B; border: 1px solid var(--rule); border-radius: 9px; padding: 7px 6px; cursor: pointer; }
-  .placeby button[aria-pressed="true"] { color: var(--text); border-color: var(--text2); }
-  .card { margin-top: 14px; background: #11162B; border: 1px solid var(--rule); border-radius: 12px; padding: 12px 14px; }
-  .card .big { font: 700 30px 'JetBrains Mono', monospace; color: #FFDD33; line-height: 1.1; }
-  .card .big small { font: 500 13px 'IBM Plex Sans', sans-serif; color: var(--text2); margin-left: 6px; }
-  .card .sub { color: var(--text2); font-size: 12.5px; margin-top: 4px; }
-  .card table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12.5px; }
-  .card td { padding: 3px 0; color: var(--text2); }
-  .card td.n { font: 600 12.5px 'JetBrains Mono', monospace; color: var(--text); text-align: right; white-space: nowrap; }
-  .card td.p { color: #FF86BD; }
   .worst { margin-top: 6px; }
   .worst div { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--rule); font-size: 13px; }
   .worst div b { font: 700 13px 'JetBrains Mono', monospace; color: #FFDD33; font-weight: 700; }
@@ -161,12 +150,10 @@
   </div>
 
   <div id="commute">
-    <div class="placeby"><span data-i="clickSets"></span><button type="button" data-place="home" data-i="home" aria-pressed="true"></button><button type="button" data-place="work" data-i="work" aria-pressed="false"></button></div>
     <div class="ctl">
       <div class="ctl-head"><label for="days" data-i="days"></label><span class="val" id="daysv"></span></div>
       <input id="days" type="range" min="40" max="230" step="10" value="220">
     </div>
-    <div class="card" id="card"></div>
   </div>
 
   <div class="legend" id="legend"></div>
@@ -215,16 +202,12 @@ const T = {
     here: "Start:", clickHint: "Click the map or drag the white dot to move the start.",
     outside: "Outside the area with timetable data — pick a point in {{REGION_EN}}.",
     notFound: "Nothing found in {{REGION_EN}} for that.",
-    vTime: "Travel time", vRisk: "Delay risk", vCost: "Commute cost",
-    clickSets: "Map click sets", home: "● Home", work: "◆ Work", arrive: "Arrive at work by",
+    vTime: "Travel time", vRisk: "Delay risk", vCost: "Commute cost", arrive: "Arrive at work by",
     days: "Commute days per year", daysTxt: d => `${d} (about ${Math.round(d / 46)} a week)`,
-    costTitle: "Time lost to delays", perDay: "min a day", perYear: "hours a year", perMonth: "h a month",
-    costSub: (lvl, days, a, b) => `Extra time you must plan to arrive on time ${lvl}, both ways, ${days} days a year. Average over arrivals ${a}–${b}.`,
-    morning: "Morning to work", evening: t => `Back home, leaving ${t}`, timetable: "timetable", planned: "plan",
+    costSub: (lvl, days, a, b) => `Extra time to plan so you arrive on time ${lvl}, both ways, ${days} days a year, averaged over arrivals ${a}–${b}.`,
     worstH: "Where commuting to ◆ costs the most", worstNote: "Towns and districts with 3,000+ residents, by hours lost a year.",
     costOff: "Pick a reliability above “timetable”: at timetable times nothing is lost.",
-    unreach: "not reachable within 2 hours",
-    costHint: "◆ is your workplace. Click the map where you live (●) to see how many hours a year delays cost you. To move ◆, drag it or switch “Map click sets” to Work.",
+    workAt: "Workplace ◆:", clickWork: "Click the map or drag ◆ to move the workplace.",
     costLegend: ["50", "100", "150", "200+ h/year"],
     costNote: "Yellow to pink: hours a year someone living there loses commuting to ◆.",
     rel: "I need to be on time", tt: "timetable", dep: "Leave at",
@@ -257,16 +240,12 @@ const T = {
     here: "Start:", clickHint: "Auf die Karte klicken oder den weißen Punkt ziehen, um den Start zu verschieben.",
     outside: "Außerhalb des Gebiets mit Fahrplandaten – bitte einen Punkt {{IN_REGION_DE}} wählen.",
     notFound: "Dazu wurde {{IN_REGION_DE}} nichts gefunden.",
-    vTime: "Fahrzeit", vRisk: "Verspätungsrisiko", vCost: "Pendelkosten",
-    clickSets: "Klick auf die Karte setzt", home: "● Wohnort", work: "◆ Arbeit", arrive: "Bei der Arbeit sein um",
+    vTime: "Fahrzeit", vRisk: "Verspätungsrisiko", vCost: "Pendelkosten", arrive: "Bei der Arbeit sein um",
     days: "Pendeltage pro Jahr", daysTxt: d => `${d} (etwa ${Math.round(d / 46)} pro Woche)`,
-    costTitle: "Zeitverlust durch Verspätungen", perDay: "Min. pro Tag", perYear: "Stunden im Jahr", perMonth: "Std. im Monat",
-    costSub: (lvl, days, a, b) => `Zusätzliche Zeit, die man einplanen muss, um ${lvl} pünktlich zu sein, hin und zurück, ${days} Tage im Jahr. Mittel über Ankunft ${a}–${b}.`,
-    morning: "Morgens zur Arbeit", evening: t => `Zurück, Abfahrt ${t}`, timetable: "Fahrplan", planned: "einplanen",
+    costSub: (lvl, days, a, b) => `Zusätzliche Zeit, um ${lvl} pünktlich zu sein, hin und zurück, ${days} Tage im Jahr, gemittelt über Ankunft ${a}–${b}.`,
     worstH: "Wo das Pendeln zu ◆ am meisten kostet", worstNote: "Orte und Stadtteile ab 3.000 Einwohnern, nach Stunden pro Jahr.",
     costOff: "Wählen Sie oben eine Zuverlässigkeit über „Fahrplan“: nach Fahrplan geht keine Zeit verloren.",
-    unreach: "nicht innerhalb von 2 Stunden erreichbar",
-    costHint: "◆ ist der Arbeitsplatz. Klicken Sie auf Ihren Wohnort (●), um zu sehen, wie viele Stunden im Jahr Verspätungen kosten. ◆ verschieben: ziehen oder „Klick auf die Karte setzt“ auf Arbeit stellen.",
+    workAt: "Arbeitsplatz ◆:", clickWork: "Auf die Karte klicken oder ◆ ziehen, um den Arbeitsplatz zu verschieben.",
     costLegend: ["50", "100", "150", "200+ Std./Jahr"],
     costNote: "Gelb bis Pink: Stunden im Jahr, die man von dort beim Pendeln zu ◆ verliert.",
     rel: "Ich muss pünktlich sein", tt: "Fahrplan", dep: "Abfahrt um",
@@ -301,15 +280,16 @@ function saved() { try { return localStorage.getItem("lang"); } catch (e) { retu
 const params = new URLSearchParams(location.search);
 let lang = params.get("lang") in T ? params.get("lang") : saved() in T ? saved()
          : (navigator.language || "").toLowerCase().startsWith("de") ? "de" : "en";
-let view = "time", origin = START.slice(), placeName = "{{START_NAME}}", work = START.slice(), placeBy = "home";
+let view = "time", origin = START.slice(), placeName = "{{START_NAME}}";
 const hash = location.hash.slice(1).split(",");
 if (hash.length >= 2 && !isNaN(+hash[0])) {
   origin = [+hash[0], +hash[1]]; placeName = "";
   if (hash[2] !== undefined) $("dep").value = hash[2];
   if (hash[3] !== undefined) $("rel").value = hash[3];
   if (hash[4] === "risk" || hash[4] === "cost") view = hash[4];
-  if (hash.length >= 7 && !isNaN(+hash[5])) work = [+hash[5], +hash[6]];
-  if (hash[7] !== undefined) $("days").value = hash[7];
+  // cost view: #lat,lon,dep,rel,cost,days (older links: ...,cost,wlat,wlon,days)
+  if (view === "cost" && hash.length >= 8) { origin = [+hash[5], +hash[6]]; $("days").value = hash[7]; }
+  else if (view === "cost" && hash[5] !== undefined) $("days").value = hash[5];
 }
 let redraw = () => {};
 
@@ -522,14 +502,10 @@ fetch("meta.json").then(r => r.json()).then(M => {
   const marker = L.marker(origin, { draggable: true, keyboard: true, zIndexOffset: 1000, title: "Start",
     icon: L.divIcon({ className: "", iconSize: [30, 30], iconAnchor: [15, 15], html: '<div class="origin"></div>' }) }).addTo(map);
   marker.on("dragend", () => { const p = marker.getLatLng(); setOrigin([p.lat, p.lng], ""); });
-  const workMarker = L.marker(work, { draggable: true, keyboard: true, zIndexOffset: 1100, title: "Work",
-    icon: L.divIcon({ className: "", iconSize: [28, 28], iconAnchor: [14, 14], html: '<div class="work"></div>' }) });
-  workMarker.on("dragend", () => { const p = workMarker.getLatLng(); work = [p.lat, p.lng]; draw(); });
-  map.on("click", ev => {
-    const p = [ev.latlng.lat, ev.latlng.lng];
-    if (view === "cost" && placeBy === "work") { work = p; workMarker.setLatLng(p); draw(); }
-    else setOrigin(p, "");
-  });
+  // in the cost view the same point is the workplace, drawn as ◆
+  const ICON = { start: marker.options.icon,
+    work: L.divIcon({ className: "", iconSize: [28, 28], iconAnchor: [14, 14], html: '<div class="work"></div>' }) };
+  map.on("click", ev => setOrigin([ev.latlng.lat, ev.latlng.lng], ""));
 
   const inside = p => p[0] > S && p[0] < N && p[1] > W && p[1] < E;
   function setOrigin(p, name) {
@@ -546,17 +522,17 @@ fetch("meta.json").then(r => r.json()).then(M => {
     document.querySelector('label[for="dep"]').textContent = view === "cost" ? T[lang].arrive : T[lang].dep;
     $("commute").style.display = view === "cost" ? "block" : "none";
     $("daysv").textContent = T[lang].daysTxt(+$("days").value);
-    if (view === "cost") workMarker.addTo(map); else workMarker.remove();
+    marker.setIcon(view === "cost" ? ICON.work : ICON.start);
     const md = level > 0 ? (M.mode_delay[M.levels[level]][h] || {}) : {};
     const dec = v => lang === "de" ? v.toFixed(1).replace(".", ",") : v.toFixed(1);
     $("modes").innerHTML = level === 0 ? "" : `<span class="lbl">${T[lang].buffer}</span>` +
       Object.keys(md).sort((a, b) => md[b] - md[a]).map(m => `<span>${T[lang].modes[m] || m}<b>+${dec(md[m])} min</b></span>`).join("");
     $("where").innerHTML = inside(origin)
-      ? `${T[lang].here} <b>${placeName || origin[0].toFixed(4) + ", " + origin[1].toFixed(4)}</b><br>${T[lang].clickHint}`
+      ? `${view === "cost" ? T[lang].workAt : T[lang].here} <b>${placeName || origin[0].toFixed(4) + ", " + origin[1].toFixed(4)}</b><br>${view === "cost" ? T[lang].clickWork : T[lang].clickHint}`
       : T[lang].outside;
     legend();
     history.replaceState(null, "", `${location.search}#${origin[0].toFixed(5)},${origin[1].toFixed(5)},${$("dep").value},${level},${view}` +
-      (view === "cost" ? `,${work[0].toFixed(5)},${work[1].toFixed(5)},${$("days").value}` : ""));
+      (view === "cost" ? `,${$("days").value}` : ""));
     if (!inside(origin)) { bandLayer.clearLayers(); riskLayer.clearLayers(); $("rows").innerHTML = ""; return; }
 
     if (view === "cost") return drawCost(my, level, T0);
@@ -620,7 +596,8 @@ fetch("meta.json").then(r => r.json()).then(M => {
     if (my !== seq) return;
     bandLayer.clearLayers(); riskLayer.clearLayers();
     $("statsh").innerHTML = T[lang].worstH;
-    if (level === 0) { $("card").textContent = T[lang].costOff; $("rows").innerHTML = ""; $("note").textContent = ""; return; }
+    if (level === 0) { $("rows").innerHTML = ""; $("note").textContent = T[lang].costOff; return; }
+    const work = origin;
 
     // per cell, the mean over the arrival window of the four legs (timetable
     // and reliable, morning and evening); cells too far by timetable at some
@@ -655,38 +632,18 @@ fetch("meta.json").then(r => r.json()).then(M => {
     rings(riskLayer, g, COST.map(x => x - .5), i => ({ color: COST_COLORS[i], weight: 1.1, opacity: .85,
       fillColor: COST_COLORS[i], fillOpacity: COST_FILL[i] }));
 
-    const c = cellOf(origin), m = s => Math.round(s / 60), t = T[lang];
-    const dec = v => lang === "de" ? v.toFixed(1).replace(".", ",") : v.toFixed(1);
-    const sameSpot = Math.hypot((origin[0] - work[0]) * KY, (origin[1] - work[1]) * KX) < 500;
-    if (sameSpot) {
-      $("card").innerHTML = `<div class="sub">${t.costHint}</div>`;
-    } else if (c < 0 || isNaN(lost(c))) {
-      $("card").innerHTML = `<div class="sub">${t.unreach}</div>`;
-    } else {
-      const day = lost(c), year = day / 3600 * days;
-      const leg = (a, b) => `${m(a)} → ${m(b)} <span class="p">(+${m(b - a)})</span>`;
-      $("card").innerHTML = `<div class="kicker">${t.costTitle}</div>
-        <div class="big">${Math.round(year)}<small>${t.perYear}</small></div>
-        <div class="sub">+${m(day)} ${t.perDay} · ${dec(year / 12)} ${t.perMonth}</div>
-        <table><tr><td>${t.morning}</td><td class="n">${leg(mT(c), mL(c))} min</td></tr>
-        <tr><td>${t.evening(fmtT(D + o0) + "–" + fmtT(D + o1))}</td><td class="n">${leg(eT(c), eL(c))} min</td></tr></table>
-        <div class="sub">${t.costSub(t.onTime[level], days, fmtT(A + o0), fmtT(A + o1))}</div>`;
-    }
+    const t = T[lang];
     const worst = [...groups].filter(([, e]) => e[0] >= 3000).map(([k, e]) => [k, e[1] / e[0]])
       .sort((a, b) => b[1] - a[1]).slice(0, 6);
     $("rows").innerHTML = `<div class="worst">` + worst.map(([k, h]) =>
       `<div><span>${k}</span><b>${Math.round(h)} h</b></div>`).join("") + `</div>`;
-    $("note").textContent = `${t.worstNote} ${t.costNote}`;
+    $("note").textContent = `${t.worstNote} ${t.costNote} ${t.costSub(t.onTime[level], days, fmtT(A + o0), fmtT(A + o1))}`;
   }
 
   // ------------------------------------------------------------------ controls
   let pending = 0;
   const soon = () => { cancelAnimationFrame(pending); pending = requestAnimationFrame(draw); };
   $("rel").addEventListener("input", soon); $("dep").addEventListener("input", soon); $("days").addEventListener("input", soon);
-  document.querySelectorAll(".placeby button").forEach(btn => btn.addEventListener("click", () => {
-    placeBy = btn.dataset.place;
-    document.querySelectorAll(".placeby button").forEach(b => b.setAttribute("aria-pressed", b === btn));
-  }));
   document.querySelectorAll(".view button").forEach(btn => {
     btn.setAttribute("aria-pressed", btn.dataset.view === view);
     btn.addEventListener("click", () => {
