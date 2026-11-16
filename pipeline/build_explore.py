@@ -58,7 +58,9 @@ SITES = {
         AREA_DE="Stuttgart, Esslingen, Ludwigsburg, Böblingen, Sindelfingen und Waiblingen")),
     # Düsseldorf and Köln as one region: the two collector boxes touch, and the
     # Düsseldorf box alone cuts every isochrone at the Köln border
-    "Düsseldorf": dict(box=(50.80, 6.50, 51.42, 7.20), src=HERE / "data" / "dus",
+    # rail2025: trains from DB's own 2025 data (db2025_rail.py) - the collector sees
+    # only a third of the rail events here and gtfs.de has no ICE / IC
+    "Düsseldorf": dict(box=(50.80, 6.50, 51.42, 7.20), src=HERE / "data" / "dus", rail2025=True,
                        stops=HERE / "data" / "dus" / "stops.parquet", pop=HERE / "data" / "dus" / "population.parquet",
                        out=HERE / "explore_dus", page=dict(
         TITLE="Düsseldorf & Köln transit reach", URL="https://ilyas-ku.github.io/duesseldorf-koeln-transit-reach/",
@@ -67,7 +69,14 @@ SITES = {
         START_NAME="Düsseldorf Hauptbahnhof", EXAMPLE="Heinrich-Heine-Allee",
         DAY_EN="Tuesday 13 Oct 2026", DAY_DE="Dienstag, 13.10.2026",
         AREA_EN="Düsseldorf and Köln with their surroundings, from Krefeld and Ratingen to Leverkusen, Bergisch Gladbach and Brühl",
-        AREA_DE="Düsseldorf und Köln mit Umland, von Krefeld und Ratingen bis Leverkusen, Bergisch Gladbach und Brühl")),
+        AREA_DE="Düsseldorf und Köln mit Umland, von Krefeld und Ratingen bis Leverkusen, Bergisch Gladbach und Brühl",
+        RAIL_NOTE_EN=" Trains (S-Bahn, regional, ICE/IC) use Deutsche Bahn's own data for weekdays 29 Sep – 14 Nov 2025 "
+                     "(Bahn-Vorhersage): the live feed shows only a third of DB's stops here, and the open timetable has "
+                     "no ICE/IC, which come from Tuesday 14 Oct 2025.",
+        RAIL_NOTE_DE=" Züge (S-Bahn, Regionalverkehr, ICE/IC) nutzen die Daten der Deutschen Bahn für Werktage vom "
+                     "29.09. bis 14.11.2025 (Bahn-Vorhersage): Der Echtzeit-Feed zeigt hier nur ein Drittel der DB-Halte, "
+                     "und der offene Fahrplan enthält keine ICE/IC; diese stammen vom Dienstag, 14.10.2025.",
+        FOOT_EXTRA=" Deutsche Bahn via Bahn-Vorhersage (ODbL),")),
 }
 SITE = SITES[CITY]
 BOX, SRC, OUT = SITE["box"], SITE["src"], SITE["out"]
@@ -129,6 +138,14 @@ def main():
     dl = dl.merge(cs, on=key, how="left")
     assert len(dl) == n0, "cost stats duplicated delay rows"
     print(f"cost stats matched {dl['mean'].notna().mean():.1%} of delay rows")
+    if SITE.get("rail2025"):
+        rail = pd.read_parquet(SRC / "rail2025_delays.parquet")
+        fvd = pd.read_parquet(SRC / "fv_delays.parquet")
+        dl = pd.concat([dl[~dl["mode"].isin(["S-Bahn", "Regional rail"])], rail, fvd], ignore_index=True)
+        con = pd.concat([con, pd.read_parquet(SRC / "fv_connections.parquet")], ignore_index=True)
+        stops = pd.concat([stops, pd.read_parquet(SRC / "fv_stops.parquet")], ignore_index=True)
+        print(f"rail from DB 2025: {len(rail)} S-Bahn/regional rows, {len(fvd)} long-distance rows, "
+              f"{con['mode'].eq('Long distance').sum()} ICE/IC hops")
     pop = pd.read_parquet(SITE["pop"])
 
     stops = stops[stops.stop.isin(set(con.dep_stop) | set(con.arr_stop))].reset_index(drop=True)
@@ -181,7 +198,7 @@ def main():
     json.dump(meta, open(OUT / "meta.json", "w", encoding="utf-8"), separators=(",", ":"), ensure_ascii=False)
     # the page: one template for every city, filled in here
     page = (HERE / "site" / "template.html").read_text(encoding="utf-8")
-    cfg = dict(SITE["page"], START_LAT=str(SITE["page"]["START"][0]), START_LON=str(SITE["page"]["START"][1]))
+    cfg = dict(dict(RAIL_NOTE_EN="", RAIL_NOTE_DE="", FOOT_EXTRA=""), **SITE["page"], START_LAT=str(SITE["page"]["START"][0]), START_LON=str(SITE["page"]["START"][1]))
     for k, v in cfg.items():
         if k != "START":
             page = page.replace("{{" + k + "}}", v)
