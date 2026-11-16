@@ -135,7 +135,7 @@
     <button type="button" data-view="time" data-i="vTime" aria-pressed="true"></button><button type="button" data-view="risk" data-i="vRisk" aria-pressed="false"></button><button type="button" data-view="cost" data-i="vCost" aria-pressed="false"></button>
   </div>
 
-  <div class="ctl">
+  <div class="ctl" id="relctl">
     <div class="ctl-head"><label for="rel" data-i="rel"></label><span class="val" id="relv"></span></div>
     <input id="rel" type="range" min="0" max="4" step="1" value="3" aria-describedby="relh">
     <div class="ticks"><span data-i="tt"></span><span>1/2</span><span>4/5</span><span>9/10</span><span>19/20</span></div>
@@ -150,6 +150,13 @@
   </div>
 
   <div id="commute">
+    <div class="ctl">
+      <div class="ctl-head"><label for="day" data-i="day"></label><span class="val" id="dayv"></span></div>
+      <input id="day" type="range" min="0" max="4" step="1" value="2" aria-describedby="dayh">
+      <div class="ticks" id="dayt"></div>
+      <div class="hint" id="dayh"></div>
+      <div class="modes" id="cmodes" aria-live="polite"></div>
+    </div>
     <div class="ctl">
       <div class="ctl-head"><label for="days" data-i="days"></label><span class="val" id="daysv"></span></div>
       <input id="days" type="range" min="40" max="230" step="10" value="220">
@@ -204,9 +211,16 @@ const T = {
     notFound: "Nothing found in {{REGION_EN}} for that.",
     vTime: "Travel time", vRisk: "Delay risk", vCost: "Commute cost", arrive: "Arrive at work by",
     days: "Commute days per year", daysTxt: d => `${d} (about ${Math.round(d / 46)} a week)`,
-    costSub: (lvl, days, a, b) => `Extra time to plan so you arrive on time ${lvl}, both ways, ${days} days a year, averaged over arrivals ${a}–${b}.`,
+    costSub: (d, days, a, b) => `Time lost against the timetable ${d}, both ways, as if all ${days} commute days of the year went like this; arrivals averaged over ${a}–${b}.`,
+    day: "What kind of day", dayLevels: ["Very good day", "Good day", "Average day", "Bad day", "Very bad day"],
+    dayTicks: ["very good", "good", "average", "bad", "very bad"],
+    dayPhrase: ["on a very good day", "on a good day", "on an average day", "on a bad day", "on a very bad day"],
+    dayHints: ["Every ride as punctual as the best 10% of trips, nothing cancelled.",
+               "Every ride as punctual as the best 25% of trips, nothing cancelled.",
+               "The average delay on every ride, plus the average wait for cancelled trips.",
+               "Every ride as late as the worst 25% of trips, plus waits for cancellations.",
+               "Every ride as late as the worst 10% of trips, plus waits for cancellations."],
     worstH: "Where commuting to ◆ costs the most", worstNote: "Towns and districts with 3,000+ residents, by hours lost a year.",
-    costOff: "Pick a reliability above “timetable”: at timetable times nothing is lost.",
     workAt: "Workplace ◆:", clickWork: "Click the map or drag ◆ to move the workplace.",
     costLegend: ["50", "100", "150", "200+ h/year"],
     costNote: "Yellow to pink: hours a year someone living there loses commuting to ◆.",
@@ -242,9 +256,16 @@ const T = {
     notFound: "Dazu wurde {{IN_REGION_DE}} nichts gefunden.",
     vTime: "Fahrzeit", vRisk: "Verspätungsrisiko", vCost: "Pendelkosten", arrive: "Bei der Arbeit sein um",
     days: "Pendeltage pro Jahr", daysTxt: d => `${d} (etwa ${Math.round(d / 46)} pro Woche)`,
-    costSub: (lvl, days, a, b) => `Zusätzliche Zeit, um ${lvl} pünktlich zu sein, hin und zurück, ${days} Tage im Jahr, gemittelt über Ankunft ${a}–${b}.`,
+    costSub: (d, days, a, b) => `Zeitverlust gegenüber dem Fahrplan ${d}, hin und zurück, als ob alle ${days} Pendeltage im Jahr so liefen; gemittelt über Ankunft ${a}–${b}.`,
+    day: "Was für ein Tag", dayLevels: ["Sehr guter Tag", "Guter Tag", "Durchschnittlicher Tag", "Schlechter Tag", "Sehr schlechter Tag"],
+    dayTicks: ["sehr gut", "gut", "mittel", "schlecht", "sehr schlecht"],
+    dayPhrase: ["an einem sehr guten Tag", "an einem guten Tag", "an einem durchschnittlichen Tag", "an einem schlechten Tag", "an einem sehr schlechten Tag"],
+    dayHints: ["Jede Fahrt so pünktlich wie die besten 10 % der Fahrten, kein Ausfall.",
+               "Jede Fahrt so pünktlich wie die besten 25 % der Fahrten, kein Ausfall.",
+               "Die durchschnittliche Verspätung jeder Fahrt plus die mittlere Wartezeit bei Ausfällen.",
+               "Jede Fahrt so spät wie die schlechtesten 25 % der Fahrten, plus Wartezeit bei Ausfällen.",
+               "Jede Fahrt so spät wie die schlechtesten 10 % der Fahrten, plus Wartezeit bei Ausfällen."],
     worstH: "Wo das Pendeln zu ◆ am meisten kostet", worstNote: "Orte und Stadtteile ab 3.000 Einwohnern, nach Stunden pro Jahr.",
-    costOff: "Wählen Sie oben eine Zuverlässigkeit über „Fahrplan“: nach Fahrplan geht keine Zeit verloren.",
     workAt: "Arbeitsplatz ◆:", clickWork: "Auf die Karte klicken oder ◆ ziehen, um den Arbeitsplatz zu verschieben.",
     costLegend: ["50", "100", "150", "200+ Std./Jahr"],
     costNote: "Gelb bis Pink: Stunden im Jahr, die man von dort beim Pendeln zu ◆ verliert.",
@@ -285,7 +306,7 @@ const hash = location.hash.slice(1).split(",");
 if (hash.length >= 2 && !isNaN(+hash[0])) {
   origin = [+hash[0], +hash[1]]; placeName = "";
   if (hash[2] !== undefined) $("dep").value = hash[2];
-  if (hash[3] !== undefined) $("rel").value = hash[3];
+  if (hash[3] !== undefined) $(hash[4] === "cost" ? "day" : "rel").value = hash[3];
   if (hash[4] === "risk" || hash[4] === "cost") view = hash[4];
   // cost view: #lat,lon,dep,rel,cost,days (older links: ...,cost,wlat,wlon,days)
   if (view === "cost" && hash.length >= 8) { origin = [+hash[5], +hash[6]]; $("days").value = hash[7]; }
@@ -361,14 +382,14 @@ fetch("meta.json").then(r => r.json()).then(M => {
       const name = String(h).padStart(2, "0");
       chunks.set(h, M.hours.includes(h) ? fetch(`c/${name}.json`).then(r => r.json()).then(J => ({
         u: b64(J.u, Uint16Array), v: b64(J.v, Uint16Array), dep: b64(J.dep, Uint16Array), arr: b64(J.arr, Uint16Array),
-        trip: b64(J.trip, Uint16Array), q: M.quantiles.map(q => b64(J[q], Uint8Array)) })) : Promise.resolve(null));
+        trip: b64(J.trip, Uint16Array), q: [...M.quantiles, ...M.cost_quantiles].map(q => b64(J[q], Uint8Array)) })) : Promise.resolve(null));
     }
     return chunks.get(h);
   }
 
   // forward connection scan: earliest arrival per cell (s after T), or Infinity
   const ready = new Float64Array(NS), alight = new Float64Array(NS), onTrip = new Uint8Array(65536);
-  function reach(parts, T, level, from = origin, horizon = HORIZON_S) {
+  function reach(parts, T, qi, from = origin, horizon = HORIZON_S) {
     ready.fill(Infinity); alight.fill(Infinity); onTrip.fill(0);
     const ox = from[1] * KX, oy = from[0] * KY;
     for (let i = 0; i < NS; i++) {
@@ -378,7 +399,7 @@ fetch("meta.json").then(r => r.json()).then(M => {
     const end = T + horizon;
     for (const P of parts) {
       if (!P) continue;
-      const q = level > 0 ? P.q[level - 1] : null;
+      const q = qi >= 0 ? P.q[qi] : null;
       for (let k = 0; k < P.u.length; k++) {
         const dep = P.dep[k] * 10;
         if (dep < T) continue;
@@ -417,7 +438,7 @@ fetch("meta.json").then(r => r.json()).then(M => {
   // reverse connection scan: latest departure from every cell that still
   // arrives at `dest` by A; returns the door-to-door time in s (A - leave)
   const Aat = new Float64Array(NS), Ldep = new Float64Array(NS);
-  function reverse(parts, A, level, dest, horizon) {
+  function reverse(parts, A, qi, dest, horizon) {
     Aat.fill(-Infinity); Ldep.fill(-Infinity); onTrip.fill(0);
     const dx = dest[1] * KX, dy = dest[0] * KY;
     for (let i = 0; i < NS; i++) {
@@ -432,7 +453,7 @@ fetch("meta.json").then(r => r.json()).then(M => {
     idx.sort((a, b) => arrOf(b) - arrOf(a));          // latest arrival first
     for (const x of idx) {
       const P = parts[Math.floor(x / 1e6)], k = x % 1e6, t = P.trip[k];
-      const a = P.arr[k] * 10 + (level > 0 ? P.q[level - 1][k] * 10 : 0);
+      const a = P.arr[k] * 10 + (qi >= 0 ? P.q[qi][k] * 10 : 0);
       if (!onTrip[t]) { if (a > Aat[P.v[k]]) continue; onTrip[t] = 1; }
       const u = P.u[k], td = P.dep[k] * 10;
       if (td <= Ldep[u]) continue;
@@ -521,28 +542,34 @@ fetch("meta.json").then(r => r.json()).then(M => {
     $("depv").textContent = fmtT(T0);
     document.querySelector('label[for="dep"]').textContent = view === "cost" ? T[lang].arrive : T[lang].dep;
     $("commute").style.display = view === "cost" ? "block" : "none";
+    $("relctl").style.display = view === "cost" ? "none" : "block";
+    const day = +$("day").value;
+    $("dayv").textContent = T[lang].dayLevels[day];
+    $("dayh").textContent = T[lang].dayHints[day];
+    $("dayt").innerHTML = T[lang].dayTicks.map(x => `<span>${x}</span>`).join("");
     $("daysv").textContent = T[lang].daysTxt(+$("days").value);
     marker.setIcon(view === "cost" ? ICON.work : ICON.start);
-    const md = level > 0 ? (M.mode_delay[M.levels[level]][h] || {}) : {};
+    const md = view === "cost" ? (M.mode_delay[M.cost_levels[day]][h] || {})
+             : level > 0 ? (M.mode_delay[M.levels[level]][h] || {}) : {};
     const dec = v => lang === "de" ? v.toFixed(1).replace(".", ",") : v.toFixed(1);
-    $("modes").innerHTML = level === 0 ? "" : `<span class="lbl">${T[lang].buffer}</span>` +
+    $(view === "cost" ? "cmodes" : "modes").innerHTML = view !== "cost" && level === 0 ? "" : `<span class="lbl">${T[lang].buffer}</span>` +
       Object.keys(md).sort((a, b) => md[b] - md[a]).map(m => `<span>${T[lang].modes[m] || m}<b>+${dec(md[m])} min</b></span>`).join("");
     $("where").innerHTML = inside(origin)
       ? `${view === "cost" ? T[lang].workAt : T[lang].here} <b>${placeName || origin[0].toFixed(4) + ", " + origin[1].toFixed(4)}</b><br>${view === "cost" ? T[lang].clickWork : T[lang].clickHint}`
       : T[lang].outside;
     legend();
-    history.replaceState(null, "", `${location.search}#${origin[0].toFixed(5)},${origin[1].toFixed(5)},${$("dep").value},${level},${view}` +
+    history.replaceState(null, "", `${location.search}#${origin[0].toFixed(5)},${origin[1].toFixed(5)},${$("dep").value},${view === "cost" ? day : level},${view}` +
       (view === "cost" ? `,${$("days").value}` : ""));
     if (!inside(origin)) { bandLayer.clearLayers(); riskLayer.clearLayers(); $("rows").innerHTML = ""; return; }
 
-    if (view === "cost") return drawCost(my, level, T0);
+    if (view === "cost") return drawCost(my, day, T0);
     $("busy").textContent = T[lang].loading; $("busy").style.display = chunks.has(h) && chunks.has(h + 1) ? "none" : "block";
     const parts = await Promise.all([chunk(h), chunk(h + 1)]);
     $("busy").style.display = "none";
     if (my !== seq) return;                          // a newer request is on its way
 
-    const tt = reach(parts, T0, level);
-    const base = level > 0 ? reach(parts, T0, 0) : tt;
+    const tt = reach(parts, T0, level - 1);
+    const base = level > 0 ? reach(parts, T0, -1) : tt;
     for (let c = 0; c < NCELL; c++) grid[c] = tt[c] <= 3600 ? -Math.ceil(tt[c] / 60) : -999;
     rings(bandLayer, grid, BANDS.map(b => -b - .5), k => {
       const i = BANDS.length - 1 - k;
@@ -584,7 +611,7 @@ fetch("meta.json").then(r => r.json()).then(M => {
     }).join("");
   }
 
-  async function drawCost(my, level, A) {
+  async function drawCost(my, day, A) {
     const D = A + WORKDAY_S, days = +$("days").value;
     const o0 = COST_OFFS[0], o1 = COST_OFFS[COST_OFFS.length - 1];
     const hm = range(Math.floor((A + o0 - COST_H) / 3600), Math.floor((A + o1) / 3600));
@@ -596,16 +623,15 @@ fetch("meta.json").then(r => r.json()).then(M => {
     if (my !== seq) return;
     bandLayer.clearLayers(); riskLayer.clearLayers();
     $("statsh").innerHTML = T[lang].worstH;
-    if (level === 0) { $("rows").innerHTML = ""; $("note").textContent = T[lang].costOff; return; }
-    const work = origin;
+    const work = origin, qi = M.quantiles.length + day;
 
     // per cell, the mean over the arrival window of the four legs (timetable
     // and reliable, morning and evening); cells too far by timetable at some
     // arrival time are averaged over the others
     const sum = [0, 1, 2, 3].map(() => new Float64Array(NCELL)), n = new Uint8Array(NCELL);
     for (const o of COST_OFFS) {
-      const mT = reverse(pm, A + o, 0, work, COST_H), mL = reverse(pm, A + o, level, work, COST_H);
-      const eT = reach(pe, D + o, 0, work, COST_H), eL = reach(pe, D + o, level, work, COST_H);
+      const mT = reverse(pm, A + o, -1, work, COST_H), mL = reverse(pm, A + o, qi, work, COST_H);
+      const eT = reach(pe, D + o, -1, work, COST_H), eL = reach(pe, D + o, qi, work, COST_H);
       for (let c = 0; c < NCELL; c++) {
         if (mT[c] > COST_MAX_S || eT[c] > COST_MAX_S) continue;
         sum[0][c] += mT[c]; sum[1][c] += Math.min(mL[c], COST_H); sum[2][c] += eT[c]; sum[3][c] += Math.min(eL[c], COST_H);
@@ -617,6 +643,8 @@ fetch("meta.json").then(r => r.json()).then(M => {
     const ok = c => n[c] * 2 > COST_OFFS.length;
     const mT = c => sum[0][c] / n[c], mL = c => sum[1][c] / n[c], eT = c => sum[2][c] / n[c], eL = c => sum[3][c] / n[c];
     const lost = c => ok(c) ? mL(c) - mT(c) + eL(c) - eT(c) : NaN;     // s a day
+    // hours a year at a point, for checking from the console: costAt([lat, lon])
+    window.costAt = p => { const c = cellOf(p); return c < 0 ? NaN : Math.round(lost(c) / 3600 * days); };
     const g = new Float64Array(NCELL).fill(-999);
     const groups = new Map();
     for (let c = 0; c < NCELL; c++) {
@@ -637,13 +665,13 @@ fetch("meta.json").then(r => r.json()).then(M => {
       .sort((a, b) => b[1] - a[1]).slice(0, 6);
     $("rows").innerHTML = `<div class="worst">` + worst.map(([k, h]) =>
       `<div><span>${k}</span><b>${Math.round(h)} h</b></div>`).join("") + `</div>`;
-    $("note").textContent = `${t.worstNote} ${t.costNote} ${t.costSub(t.onTime[level], days, fmtT(A + o0), fmtT(A + o1))}`;
+    $("note").textContent = `${t.worstNote} ${t.costNote} ${t.costSub(t.dayPhrase[day], days, fmtT(A + o0), fmtT(A + o1))}`;
   }
 
   // ------------------------------------------------------------------ controls
   let pending = 0;
   const soon = () => { cancelAnimationFrame(pending); pending = requestAnimationFrame(draw); };
-  $("rel").addEventListener("input", soon); $("dep").addEventListener("input", soon); $("days").addEventListener("input", soon);
+  $("rel").addEventListener("input", soon); $("day").addEventListener("input", soon); $("dep").addEventListener("input", soon); $("days").addEventListener("input", soon);
   document.querySelectorAll(".view button").forEach(btn => {
     btn.setAttribute("aria-pressed", btn.dataset.view === view);
     btn.addEventListener("click", () => {

@@ -73,6 +73,12 @@ SITE = SITES[CITY]
 BOX, SRC, OUT = SITE["box"], SITE["src"], SITE["out"]
 Q = ["q50", "q80", "q90", "q95"]
 LEVELS = ["Timetable", "1 in 2 days", "4 in 5 days", "9 in 10 days", "19 in 20 days"]
+# commute-cost view: what kind of day, around the average (export_cost.py adds
+# mean, q10, q25, q75 from the same sample). Good days have no cancellations;
+# average and worse add the expected wait for cancelled trips, as Q does.
+C_STATS = ["q10", "q25", "mean", "q75"]
+CQ = ["c10", "c25", "cmean", "c75", "c90"]
+C_LEVELS = ["Very good day", "Good day", "Average day", "Bad day", "Very bad day"]
 
 
 def b64(a):
@@ -82,36 +88,47 @@ def b64(a):
 def leg_buffers(c, stops, dl):
     """Delay buffer (s) per connection and quantile, at its arrival stop / line / hour."""
     dl = dl.copy()
-    dl[Q] = dl[Q].clip(lower=0, upper=1800)
-    w = dl.assign(**{q: dl[q] * dl.n for q in Q + ["cancel_rate"]})
-    line = w.groupby(["line", "mode", "hour"])[Q + ["cancel_rate", "n"]].sum()
-    line[Q + ["cancel_rate"]] = line[Q + ["cancel_rate"]].div(line["n"], axis=0)
-    mode = dl.groupby(["mode", "hour"])[Q + ["cancel_rate"]].median()
-    allh = dl.groupby("mode")[Q + ["cancel_rate"]].median()           # night hours with no data
+    ST = Q + C_STATS
+    dl[ST] = dl[ST].clip(lower=0, upper=1800)
+    w = dl.assign(**{q: dl[q] * dl.n for q in ST + ["cancel_rate"]})
+    line = w.groupby(["line", "mode", "hour"])[ST + ["cancel_rate", "n"]].sum()
+    line[ST + ["cancel_rate"]] = line[ST + ["cancel_rate"]].div(line["n"], axis=0)
+    mode = dl.groupby(["mode", "hour"])[ST + ["cancel_rate"]].median()
+    allh = dl.groupby("mode")[ST + ["cancel_rate"]].median()           # night hours with no data
 
     c = c.merge(stops[["stop", "stop_key"]], left_on="arr_stop", right_on="stop", how="left")
     c["hour"] = (c.arr_s // 3600) % 24
     # keyed by mode too: a tram and its replacement bus can share line number and stop
     # (München line 25, 2026-11). Without it the join duplicates rows and every
     # buffer after the first duplicate lands on the wrong leg.
-    own = dl[dl.n >= MIN_N].set_index(["stop_key", "line", "mode", "hour"])[Q + ["cancel_rate"]]
+    own = dl[dl.n >= MIN_N].set_index(["stop_key", "line", "mode", "hour"])[ST + ["cancel_rate"]]
     assert own.index.is_unique, "delay table has duplicate stop/line/mode/hour keys"
     a = c.join(own, on=["stop_key", "line", "mode", "hour"])
     assert len(a) == len(c), "buffer join changed the number of legs"
-    b = c.join(line[Q + ["cancel_rate"]], on=["line", "mode", "hour"])
+    b = c.join(line[ST + ["cancel_rate"]], on=["line", "mode", "hour"])
     m = c.join(mode, on=["mode", "hour"])
     z = c.join(allh, on="mode")
-    for col in Q + ["cancel_rate"]:
+    for col in ST + ["cancel_rate"]:
         a[col] = a[col].fillna(b[col]).fillna(m[col]).fillna(z[col]).fillna(0)
     hw = c.groupby(["line", "arr_stop", "hour"]).trip.transform("count")
     wait = a["cancel_rate"] * (3600 / hw).clip(upper=1800)
-    return c, {q: (a[q] + wait).clip(upper=2540).to_numpy() for q in Q}
+    buf = {q: (a[q] + wait).clip(upper=2540).to_numpy() for q in Q}
+    buf.update({"c10": a["q10"].clip(upper=2540).to_numpy(), "c25": a["q25"].clip(upper=2540).to_numpy(),
+                "cmean": (a["mean"] + wait).clip(upper=2540).to_numpy(),
+                "c75": (a["q75"] + wait).clip(upper=2540).to_numpy(), "c90": buf["q90"]})
+    return c, buf
 
 
 def main():
     con = pd.read_parquet(SRC / "connections_full.parquet")
     stops = pd.read_parquet(SITE["stops"]).drop_duplicates("stop")
     dl = pd.concat([pd.read_parquet(f) for f in sorted(glob.glob(str(SRC / "delays_*.parquet")))])
+    cs = pd.concat([pd.read_parquet(f) for f in sorted(glob.glob(str(SRC / "cost_*.parquet")))])
+    key = ["stop_key", "line", "mode", "hour"]
+    n0 = len(dl)
+    dl = dl.merge(cs, on=key, how="left")
+    assert len(dl) == n0, "cost stats duplicated delay rows"
+    print(f"cost stats matched {dl['mean'].notna().mean():.1%} of delay rows")
     pop = pd.read_parquet(SITE["pop"])
 
     stops = stops[stops.stop.isin(set(con.dep_stop) | set(con.arr_stop))].reset_index(drop=True)
@@ -134,7 +151,7 @@ def main():
             "dep": b64(np.round(part.dep_s.to_numpy() / 10).astype(np.uint16)),
             "arr": b64(np.round(part.arr_s.to_numpy() / 10).astype(np.uint16)),
             "trip": b64(part.t.to_numpy(np.uint16)),
-            **{q: b64(np.round(buf[q][m] / 10).astype(np.uint8)) for q in Q},
+            **{q: b64(np.round(buf[q][m] / 10).astype(np.uint8)) for q in Q + CQ},
         }
         json.dump(chunk, open(OUT / "c" / f"{h:02d}.json", "w"), separators=(",", ":"))
 
@@ -147,13 +164,14 @@ def main():
     # average buffer per mode, hour and level (what the panel shows)
     con["h"] = (con.arr_s // 3600) % 24
     mode_delay = {}
-    for lvl, q in zip(LEVELS[1:], Q):
+    for lvl, q in list(zip(LEVELS[1:], Q)) + list(zip(C_LEVELS, CQ)):
         t = pd.DataFrame({"mode": con["mode"], "h": con.h, "d": buf[q] / 60}).groupby(["h", "mode"]).d.mean().round(1)
         mode_delay[lvl] = {int(h): t.loc[h].to_dict() for h in t.index.get_level_values(0).unique()}
 
     meta = {
         "box": BOX, "dlat": DLAT, "dlon": DLON, "rows": rows, "cols": cols,
         "day": SITE["page"]["DAY_EN"], "city": CITY, "levels": LEVELS, "quantiles": Q,
+        "cost_levels": C_LEVELS, "cost_quantiles": CQ,
         "hours": [int(h) for h in sorted(hours.unique())],
         "stop_lat": b64(stops.stop_lat.to_numpy(np.float32)), "stop_lon": b64(stops.stop_lon.to_numpy(np.float32)),
         "stop_name": stops.stop_name.fillna("").tolist(),
